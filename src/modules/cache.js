@@ -184,3 +184,4 @@ class CacheManager {
 const cacheManager = new CacheManager();
 
 module.exports = cacheManager;
+module.exports.CacheManager = CacheManager;

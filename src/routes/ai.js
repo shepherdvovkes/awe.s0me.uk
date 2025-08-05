@@ -1,47 +1,62 @@
 const express = require('express');
-const AIProcessor = require('../modules/aiProcessor');
-const databaseManager = require('../modules/database');
-const OutputFormatter = require('../utils/formatters');
-const { logInfo, logError } = require('../utils/logger');
+const Joi = require('joi');
+const AIService = require('../services/aiService');
+const Validators = require('../utils/validators');
+const { logError } = require('../utils/logger');
 const SecurityMiddleware = require('../middleware/security');
 
 const router = express.Router();
+
+// Validation schemas
+const motdSchema = Joi.object({});
+
+const commandSchema = Joi.object({
+    command: Validators.commandSchema.required(),
+    isAdmin: Validators.adminSchema
+});
+
+const legalDetectionSchema = Joi.object({
+    query: Validators.querySchema.required()
+});
+
+const legalSearchSchema = Joi.object({
+    query: Validators.querySchema.required(),
+    language: Validators.languageSchema
+});
+
+const courtCaseSchema = Joi.object({
+    query: Validators.querySchema.required()
+});
+
+const tccSchema = Joi.object({
+    command: Validators.commandSchema.required()
+});
+
+const historySchema = Joi.object({
+    limit: Validators.limitSchema
+});
 
 /**
  * MOTD endpoint
  */
 router.post('/motd',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(motdSchema),
     async(req, res) => {
         try {
-            const aiProcessor = new AIProcessor();
-
-            // Проверяем доступность OpenAI
-            if (!await aiProcessor.isOpenAIAvailable()) {
-                return res.status(503).json({
-                    error: 'AI service is currently unavailable'
-                });
-            }
-
-            // Получаем предыдущие MOTD для избежания повторений
-            const previousMotds = await databaseManager.getMOTDHistory(5);
-            const previousMessages = previousMotds.map(item => item.message);
-
-            // Генерируем многоязычные MOTD
-            const multilingualMotds = await aiProcessor.generateMultilingualMOTD();
-
-            // Форматируем вывод
-            const formattedOutput = OutputFormatter.formatMOTD(multilingualMotds);
-
-            res.json({
-                output: formattedOutput,
-                multilingual: multilingualMotds
-            });
-
+            const result = await AIService.generateMOTD();
+            res.json(result);
         } catch (error) {
-            logError('MOTD generation failed', error);
-            res.status(500).json({ error: error.message });
+            logError('MOTD generation failed', {
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'MOTD generation failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -51,31 +66,25 @@ router.post('/motd',
  */
 router.post('/process-command',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(commandSchema),
     async(req, res) => {
         try {
-            const { command, isAdmin = false } = req.body;
-
-            if (!command) {
-                return res.status(400).json({ error: 'Command is required' });
-            }
-
-            const aiProcessor = new AIProcessor();
-
-            // Проверяем доступность OpenAI
-            if (!await aiProcessor.isOpenAIAvailable()) {
-                return res.status(503).json({
-                    error: 'AI service is currently unavailable'
-                });
-            }
-
-            const response = await aiProcessor.processUnknownCommand(command, isAdmin);
-
-            res.json({ output: response });
-
+            const { command, isAdmin = false } = req.validatedBody;
+            const result = await AIService.processUnknownCommand(command, isAdmin);
+            res.json(result);
         } catch (error) {
-            logError('Command processing failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Command processing failed', {
+                command: req.validatedBody?.command,
+                isAdmin: req.validatedBody?.isAdmin,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Command processing failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -85,38 +94,24 @@ router.post('/process-command',
  */
 router.post('/detect-legal',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(legalDetectionSchema),
     async(req, res) => {
         try {
-            const { query } = req.body;
-
-            if (!query) {
-                return res.status(400).json({ error: 'Query is required' });
-            }
-
-            // Простая детекция юридических запросов
-            const legalKeywords = [
-                'закон', 'право', 'юридический', 'адвокат', 'суд', 'позов', 'договор',
-                'law', 'legal', 'attorney', 'lawyer', 'court', 'case', 'contract'
-            ];
-
-            const lowerQuery = query.toLowerCase();
-            const isLegal = legalKeywords.some(keyword => lowerQuery.includes(keyword));
-
-            let detectedLanguage = 'en';
-            if ((/[а-яё]/i).test(query)) {
-                detectedLanguage = 'ru';
-            }
-
-            res.json({
-                isLegal,
-                confidence: isLegal ? 0.8 : 0.2,
-                language: detectedLanguage
-            });
-
+            const { query } = req.validatedBody;
+            const result = await AIService.detectLegalRequest(query);
+            res.json(result);
         } catch (error) {
-            logError('Legal detection failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Legal detection failed', {
+                query: req.validatedBody?.query,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Legal detection failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -126,31 +121,25 @@ router.post('/detect-legal',
  */
 router.post('/legal-search',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(legalSearchSchema),
     async(req, res) => {
         try {
-            const { query, language = 'ru' } = req.body;
-
-            if (!query) {
-                return res.status(400).json({ error: 'Query is required' });
-            }
-
-            const aiProcessor = new AIProcessor();
-
-            // Проверяем доступность OpenAI
-            if (!await aiProcessor.isOpenAIAvailable()) {
-                return res.status(503).json({
-                    error: 'AI service is currently unavailable'
-                });
-            }
-
-            const response = await aiProcessor.processLegalRequest(query, language);
-
-            res.json({ output: response });
-
+            const { query, language = 'ru' } = req.validatedBody;
+            const result = await AIService.searchLegalDatabase(query, language);
+            res.json(result);
         } catch (error) {
-            logError('Legal search failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Legal search failed', {
+                query: req.validatedBody?.query,
+                language: req.validatedBody?.language,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Legal search failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -160,31 +149,24 @@ router.post('/legal-search',
  */
 router.post('/court-cases',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(courtCaseSchema),
     async(req, res) => {
         try {
-            const { query } = req.body;
-
-            if (!query) {
-                return res.status(400).json({ error: 'Query is required' });
-            }
-
-            const aiProcessor = new AIProcessor();
-
-            // Проверяем доступность OpenAI
-            if (!await aiProcessor.isOpenAIAvailable()) {
-                return res.status(503).json({
-                    error: 'AI service is currently unavailable'
-                });
-            }
-
-            const response = await aiProcessor.processCourtCaseRequest(query);
-
-            res.json({ output: response });
-
+            const { query } = req.validatedBody;
+            const result = await AIService.processCourtCaseRequest(query);
+            res.json(result);
         } catch (error) {
-            logError('Court case processing failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Court case processing failed', {
+                query: req.validatedBody?.query,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Court case processing failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -194,31 +176,24 @@ router.post('/court-cases',
  */
 router.post('/tcc',
     SecurityMiddleware.aiRateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(tccSchema),
     async(req, res) => {
         try {
-            const { command } = req.body;
-
-            if (!command) {
-                return res.status(400).json({ error: 'Command is required' });
-            }
-
-            const aiProcessor = new AIProcessor();
-
-            // Проверяем доступность OpenAI
-            if (!await aiProcessor.isOpenAIAvailable()) {
-                return res.status(503).json({
-                    error: 'AI service is currently unavailable'
-                });
-            }
-
-            const response = await aiProcessor.processTCCRequest(command);
-
-            res.json({ output: response });
-
+            const { command } = req.validatedBody;
+            const result = await AIService.processTCCRequest(command);
+            res.json(result);
         } catch (error) {
-            logError('TCC request processing failed', error);
-            res.status(500).json({ error: error.message });
+            logError('TCC request processing failed', {
+                command: req.validatedBody?.command,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'TCC request processing failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -226,56 +201,93 @@ router.post('/tcc',
 /**
  * MOTD history endpoint
  */
-router.get('/motd/history', async(req, res) => {
-    try {
-        const { limit = 20 } = req.query;
-        const history = await databaseManager.getMOTDHistory(parseInt(limit));
-
-        res.json({
-            history,
-            formatted: OutputFormatter.formatMOTDHistory(history)
-        });
-
-    } catch (error) {
-        logError('MOTD history failed', error);
-        res.status(500).json({ error: error.message });
+router.get('/motd/history',
+    Validators.createQueryValidationMiddleware(historySchema),
+    async(req, res) => {
+        try {
+            const { limit = 20 } = req.validatedQuery;
+            const result = await AIService.getMOTDHistory(parseInt(limit));
+            res.json(result);
+        } catch (error) {
+            logError('MOTD history failed', {
+                limit: req.validatedQuery?.limit,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'MOTD history failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
     }
-});
+);
 
 /**
  * OpenAI requests history endpoint
  */
-router.get('/openai/history', async(req, res) => {
-    try {
-        const { limit = 20 } = req.query;
-        const history = await databaseManager.getOpenAIHistory(parseInt(limit));
-
-        res.json({ history });
-
-    } catch (error) {
-        logError('OpenAI history failed', error);
-        res.status(500).json({ error: error.message });
+router.get('/openai/history',
+    Validators.createQueryValidationMiddleware(historySchema),
+    async(req, res) => {
+        try {
+            const { limit = 20 } = req.validatedQuery;
+            const result = await AIService.getOpenAIHistory(parseInt(limit));
+            res.json(result);
+        } catch (error) {
+            logError('OpenAI history failed', {
+                limit: req.validatedQuery?.limit,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'OpenAI history failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
     }
-});
+);
 
 /**
  * AI service status endpoint
  */
 router.get('/status', async(req, res) => {
     try {
-        const aiProcessor = new AIProcessor();
-        const isAvailable = await aiProcessor.isOpenAIAvailable();
-
-        res.json({
-            status: isAvailable ? 'available' : 'unavailable',
-            timestamp: new Date().toISOString()
-        });
-
+        const result = await AIService.getServiceStatus();
+        res.json(result);
     } catch (error) {
-        logError('AI status check failed', error);
+        logError('AI status check failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
         res.status(500).json({
             status: 'error',
-            error: error.message
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * AI service statistics endpoint
+ */
+router.get('/stats', async(req, res) => {
+    try {
+        const result = await AIService.getServiceStats();
+        res.json(result);
+    } catch (error) {
+        logError('AI stats failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
+        res.status(500).json({ 
+            error: 'AI stats failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });

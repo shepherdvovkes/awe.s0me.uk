@@ -1,79 +1,106 @@
 const { logSecurity } = require('../utils/logger');
+const Validators = require('../utils/validators');
 const config = require('../config/app');
 
 /**
- * Модуль безопасности для валидации команд и входных данных
+ * Security manager for command validation and sanitization
  */
 class SecurityManager {
-    // Белый список разрешенных команд
+    // Whitelist of allowed commands with configuration
     static ALLOWED_COMMANDS = {
         ping: {
             command: 'ping',
-            args: ['-c', '4'],
+            args: ['-c', config.commands.ping.count.toString()],
             maxArgs: 2,
-            validateHostname: true
+            validateHostname: true,
+            timeout: config.commands.ping.timeout
         },
         traceroute: {
             command: 'traceroute',
-            args: [],
+            args: ['-m', config.commands.traceroute.maxHops.toString()],
             maxArgs: 1,
-            validateHostname: true
+            validateHostname: true,
+            timeout: config.commands.traceroute.timeout
         },
         nslookup: {
             command: 'nslookup',
             args: [],
             maxArgs: 1,
-            validateHostname: true
+            validateHostname: true,
+            timeout: config.commands.nslookup.timeout
         },
         netstat: {
             command: 'netstat',
             args: ['-an'],
             maxArgs: 3,
-            validateHostname: false
+            validateHostname: false,
+            timeout: config.security.commandTimeout
         },
         whois: {
             command: 'whois',
             args: [],
             maxArgs: 1,
-            validateDomain: true
+            validateDomain: true,
+            timeout: config.commands.whois.timeout
         }
     };
 
     /**
-     * Валидирует команду
-     * @param {string} command - Команда для валидации
-     * @returns {boolean} - Разрешена ли команда
+     * Validates a command
+     * @param {string} command - Command to validate
+     * @returns {boolean} - Whether the command is allowed
      */
     static validateCommand(command) {
-        if (!command || typeof command !== 'string') {
+        const validation = Validators.validateCommand(command);
+        if (!validation.isValid) {
+            logSecurity('Command validation failed', { command, error: validation.error });
             return false;
         }
 
         const normalizedCommand = command.toLowerCase().trim();
-        return Object.keys(this.ALLOWED_COMMANDS).includes(normalizedCommand);
+        const isAllowed = Object.keys(this.ALLOWED_COMMANDS).includes(normalizedCommand);
+        
+        if (!isAllowed) {
+            logSecurity('Command not in whitelist', { command: normalizedCommand });
+        }
+        
+        return isAllowed;
     }
 
     /**
-     * Валидирует аргументы команды
-     * @param {string} command - Команда
-     * @param {Array} args - Аргументы
-     * @returns {boolean} - Валидны ли аргументы
+     * Validates command arguments
+     * @param {string} command - Command
+     * @param {Array} args - Arguments
+     * @returns {boolean} - Whether arguments are valid
      */
     static validateArgs(command, args = []) {
         const normalizedCommand = command.toLowerCase().trim();
         const commandConfig = this.ALLOWED_COMMANDS[normalizedCommand];
 
         if (!commandConfig) {
+            logSecurity('Command not found in configuration', { command: normalizedCommand });
             return false;
         }
 
-        // Проверяем количество аргументов
+        // Validate arguments array
+        const argsValidation = Validators.validateArgs(args);
+        if (!argsValidation.isValid) {
+            logSecurity('Arguments validation failed', { command, args, error: argsValidation.error });
+            return false;
+        }
+
+        // Check argument count
         if (args.length > commandConfig.maxArgs) {
-            logSecurity('Too many arguments', { command, args, maxArgs: commandConfig.maxArgs });
+            logSecurity('Too many arguments', { 
+                command, 
+                args, 
+                maxArgs: commandConfig.maxArgs,
+                actualCount: args.length 
+            });
             return false;
         }
 
-        // Валидируем каждый аргумент
+        // Validate each argument
         for (const arg of args) {
             if (!this.sanitizeInput(arg)) {
                 logSecurity('Invalid argument', { command, arg });
@@ -85,138 +112,75 @@ class SecurityManager {
     }
 
     /**
-     * Санитизирует входные данные
-     * @param {string} input - Входные данные
-     * @returns {string} - Санитизированные данные
+     * Sanitizes input string
+     * @param {string} input - Input to sanitize
+     * @returns {string} - Sanitized input
      */
     static sanitizeInput(input) {
-        if (!input || typeof input !== 'string') {
-            return '';
-        }
-
-        // Удаляем потенциально опасные символы
-        return input
-            .replace(/[;&|`$(){}[\]<>]/g, '') // Удаляем shell метасимволы
-            .replace(/\s+/g, ' ') // Нормализуем пробелы
-            .trim();
+        return Validators.sanitizeInput(input);
     }
 
     /**
-     * Валидирует hostname
-     * @param {string} hostname - Hostname для валидации
-     * @returns {boolean} - Валиден ли hostname
+     * Validates hostname
+     * @param {string} hostname - Hostname to validate
+     * @returns {boolean} - Whether hostname is valid
      */
     static validateHostname(hostname) {
-        if (!hostname || typeof hostname !== 'string') {
-            return false;
-        }
-
-        const sanitized = this.sanitizeInput(hostname);
-        
-        // Проверяем формат hostname
-        const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        
-        if (!hostnameRegex.test(sanitized)) {
-            logSecurity('Invalid hostname', { hostname: sanitized });
-            return false;
-        }
-
-        // Проверяем длину
-        if (sanitized.length > 253) {
-            logSecurity('Hostname too long', { hostname: sanitized, length: sanitized.length });
-            return false;
-        }
-
-        return true;
+        const validation = Validators.validateHostname(hostname);
+        return validation.isValid;
     }
 
     /**
-     * Валидирует domain
-     * @param {string} domain - Domain для валидации
-     * @returns {boolean} - Валиден ли domain
+     * Validates domain
+     * @param {string} domain - Domain to validate
+     * @returns {boolean} - Whether domain is valid
      */
     static validateDomain(domain) {
-        if (!domain || typeof domain !== 'string') {
-            return false;
-        }
-
-        const sanitized = this.sanitizeInput(domain);
-        
-        // Проверяем формат domain
-        const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
-        
-        if (!domainRegex.test(sanitized)) {
-            logSecurity('Invalid domain', { domain: sanitized });
-            return false;
-        }
-
-        // Проверяем длину
-        if (sanitized.length > 253) {
-            logSecurity('Domain too long', { domain: sanitized, length: sanitized.length });
-            return false;
-        }
-
-        return true;
+        const validation = Validators.validateDomain(domain);
+        return validation.isValid;
     }
 
     /**
-     * Валидирует IP адрес
-     * @param {string} ip - IP адрес для валидации
-     * @returns {boolean} - Валиден ли IP адрес
+     * Validates IP address
+     * @param {string} ip - IP address to validate
+     * @returns {boolean} - Whether IP address is valid
      */
     static validateIP(ip) {
-        if (!ip || typeof ip !== 'string') {
-            return false;
-        }
-
-        const sanitized = this.sanitizeInput(ip);
-        
-        // Проверяем IPv4
-        const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        
-        if (ipv4Regex.test(sanitized)) {
-            return true;
-        }
-
-        // Проверяем IPv6 (упрощенная проверка)
-        const ipv6Regex = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-        
-        if (ipv6Regex.test(sanitized)) {
-            return true;
-        }
-
-        logSecurity('Invalid IP address', { ip: sanitized });
-        return false;
+        const validation = Validators.validateIP(ip);
+        return validation.isValid;
     }
 
     /**
-     * Проверяет, не является ли команда потенциально опасной
-     * @param {string} command - Команда для проверки
-     * @param {Array} args - Аргументы команды
-     * @returns {boolean} - Безопасна ли команда
+     * Checks if a command is safe to execute
+     * @param {string} command - Command to check
+     * @param {Array} args - Command arguments
+     * @returns {boolean} - Whether command is safe
      */
     static isCommandSafe(command, args = []) {
         const normalizedCommand = command.toLowerCase().trim();
         
-        // Проверяем, разрешена ли команда
+        // Check if command is allowed
         if (!this.validateCommand(normalizedCommand)) {
             logSecurity('Command not allowed', { command: normalizedCommand });
             return false;
         }
 
-        // Проверяем аргументы
+        // Check arguments
         if (!this.validateArgs(normalizedCommand, args)) {
             logSecurity('Invalid arguments', { command: normalizedCommand, args });
             return false;
         }
 
-        // Дополнительные проверки для специфических команд
+        // Additional checks for specific commands
         const commandConfig = this.ALLOWED_COMMANDS[normalizedCommand];
         
         if (commandConfig.validateHostname) {
             for (const arg of args) {
                 if (!this.validateHostname(arg) && !this.validateIP(arg)) {
-                    logSecurity('Invalid hostname in command', { command: normalizedCommand, arg });
+                    logSecurity('Invalid hostname in command', { 
+                        command: normalizedCommand, 
+                        arg 
+                    });
                     return false;
                 }
             }
@@ -225,7 +189,10 @@ class SecurityManager {
         if (commandConfig.validateDomain) {
             for (const arg of args) {
                 if (!this.validateDomain(arg)) {
-                    logSecurity('Invalid domain in command', { command: normalizedCommand, arg });
+                    logSecurity('Invalid domain in command', { 
+                        command: normalizedCommand, 
+                        arg 
+                    });
                     return false;
                 }
             }
@@ -235,10 +202,10 @@ class SecurityManager {
     }
 
     /**
-     * Создает безопасную команду для выполнения
-     * @param {string} command - Команда
-     * @param {Array} args - Аргументы
-     * @returns {Object} - Объект с командой и аргументами
+     * Creates a safe command for execution
+     * @param {string} command - Command
+     * @param {Array} args - Arguments
+     * @returns {Object} - Safe command object
      */
     static createSafeCommand(command, args = []) {
         const normalizedCommand = command.toLowerCase().trim();
@@ -248,17 +215,93 @@ class SecurityManager {
             throw new Error('Command not allowed');
         }
 
-        // Санитизируем аргументы
+        // Sanitize arguments
         const sanitizedArgs = args.map(arg => this.sanitizeInput(arg));
 
-        // Объединяем базовые аргументы команды с пользовательскими
+        // Combine base command arguments with user arguments
         const finalArgs = [...commandConfig.args, ...sanitizedArgs];
 
         return {
             command: commandConfig.command,
             args: finalArgs,
-            fullCommand: `${commandConfig.command} ${finalArgs.join(' ')}`
+            fullCommand: `${commandConfig.command} ${finalArgs.join(' ')}`,
+            timeout: commandConfig.timeout
         };
+    }
+
+    /**
+     * Validates network target (hostname or IP)
+     * @param {string} target - Target to validate
+     * @returns {boolean} - Whether target is valid
+     */
+    static validateNetworkTarget(target) {
+        return this.validateHostname(target) || this.validateIP(target);
+    }
+
+    /**
+     * Validates request body for security
+     * @param {Object} body - Request body
+     * @returns {Object} - Validation result
+     */
+    static validateRequestBody(body) {
+        const errors = [];
+
+        // Check for malicious patterns
+        const maliciousPatterns = [
+            /[;&|`$(){}[\]<>]/,
+            /(?:rm\s+-rf|del\s+\/s|format\s+c:)/i,
+            /(?:eval\(|setTimeout\(|setInterval\()/i
+        ];
+
+        const checkValue = (value, path = '') => {
+            if (typeof value === 'string') {
+                for (const pattern of maliciousPatterns) {
+                    if (pattern.test(value)) {
+                        errors.push(`Malicious pattern detected in ${path || 'body'}: ${value}`);
+                    }
+                }
+            } else if (typeof value === 'object' && value !== null) {
+                for (const [key, val] of Object.entries(value)) {
+                    checkValue(val, path ? `${path}.${key}` : key);
+                }
+            }
+        };
+
+        checkValue(body);
+
+        return {
+            isValid: errors.length === 0,
+            errors
+        };
+    }
+
+    /**
+     * Gets command configuration
+     * @param {string} command - Command name
+     * @returns {Object|null} - Command configuration
+     */
+    static getCommandConfig(command) {
+        const normalizedCommand = command.toLowerCase().trim();
+        return this.ALLOWED_COMMANDS[normalizedCommand] || null;
+    }
+
+    /**
+     * Gets all allowed commands
+     * @returns {Array} - Array of allowed command names
+     */
+    static getAllowedCommands() {
+        return Object.keys(this.ALLOWED_COMMANDS);
+    }
+
+    /**
+     * Checks if command requires admin privileges
+     * @param {string} command - Command to check
+     * @returns {boolean} - Whether command requires admin
+     */
+    static requiresAdmin(command) {
+        const normalizedCommand = command.toLowerCase().trim();
+        const adminCommands = ['netstat', 'system'];
+        return adminCommands.includes(normalizedCommand);
     }
 }
 

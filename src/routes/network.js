@@ -1,38 +1,50 @@
 const express = require('express');
-const CommandExecutor = require('../modules/commandExecutor');
-const OutputFormatter = require('../utils/formatters');
-const cacheManager = require('../modules/cache');
-const { logInfo, logError } = require('../utils/logger');
+const Joi = require('joi');
+const NetworkService = require('../services/networkService');
+const Validators = require('../utils/validators');
+const { logError } = require('../utils/logger');
 const SecurityMiddleware = require('../middleware/security');
 
 const router = express.Router();
+
+// Validation schemas
+const hostnameSchema = Joi.object({
+    hostname: Validators.hostnameSchema.required()
+});
+
+const domainSchema = Joi.object({
+    domain: Validators.domainSchema.required()
+});
+
+const netstatSchema = Joi.object({
+    args: Validators.argsSchema.default([])
+});
+
+
 
 /**
  * Ping endpoint
  */
 router.post('/ping',
     SecurityMiddleware.rateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(hostnameSchema),
     async(req, res) => {
         try {
-            const { hostname } = req.body;
-
-            if (!hostname) {
-                return res.status(400).json({ error: 'Hostname is required' });
-            }
-
-            const cacheKey = cacheManager.createNetworkKey(hostname, 'ping');
-
-            const result = await cacheManager.getOrSet(cacheKey, async() => {
-                const output = await CommandExecutor.ping(hostname);
-                return OutputFormatter.formatPingOutput(output);
-            }, 300); // 5 минут кэш
-
-            res.json({ output: result });
-
+            const { hostname } = req.validatedBody;
+            const result = await NetworkService.ping(hostname);
+            res.json(result);
         } catch (error) {
-            logError('Ping command failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Ping command failed', {
+                hostname: req.validatedBody?.hostname,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Ping command failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -42,27 +54,24 @@ router.post('/ping',
  */
 router.post('/traceroute',
     SecurityMiddleware.rateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(hostnameSchema),
     async(req, res) => {
         try {
-            const { hostname } = req.body;
-
-            if (!hostname) {
-                return res.status(400).json({ error: 'Hostname is required' });
-            }
-
-            const cacheKey = cacheManager.createNetworkKey(hostname, 'traceroute');
-
-            const result = await cacheManager.getOrSet(cacheKey, async() => {
-                const output = await CommandExecutor.traceroute(hostname);
-                return OutputFormatter.formatOutput(output);
-            }, 600); // 10 минут кэш
-
-            res.json({ output: result });
-
+            const { hostname } = req.validatedBody;
+            const result = await NetworkService.traceroute(hostname);
+            res.json(result);
         } catch (error) {
-            logError('Traceroute command failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Traceroute command failed', {
+                hostname: req.validatedBody?.hostname,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Traceroute command failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -72,27 +81,24 @@ router.post('/traceroute',
  */
 router.post('/nslookup',
     SecurityMiddleware.rateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(hostnameSchema),
     async(req, res) => {
         try {
-            const { hostname } = req.body;
-
-            if (!hostname) {
-                return res.status(400).json({ error: 'Hostname is required' });
-            }
-
-            const cacheKey = cacheManager.createNetworkKey(hostname, 'nslookup');
-
-            const result = await cacheManager.getOrSet(cacheKey, async() => {
-                const output = await CommandExecutor.nslookup(hostname);
-                return OutputFormatter.formatOutput(output);
-            }, 1800); // 30 минут кэш
-
-            res.json({ output: result });
-
+            const { hostname } = req.validatedBody;
+            const result = await NetworkService.nslookup(hostname);
+            res.json(result);
         } catch (error) {
-            logError('Nslookup command failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Nslookup command failed', {
+                hostname: req.validatedBody?.hostname,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Nslookup command failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -102,23 +108,24 @@ router.post('/nslookup',
  */
 router.post('/netstat',
     SecurityMiddleware.rateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(netstatSchema),
     async(req, res) => {
         try {
-            const { args = [] } = req.body;
-
-            const cacheKey = cacheManager.createCommandKey('netstat', args);
-
-            const result = await cacheManager.getOrSet(cacheKey, async() => {
-                const output = await CommandExecutor.netstat(args);
-                return OutputFormatter.formatOutput(output);
-            }, 60); // 1 минута кэш
-
-            res.json({ output: result });
-
+            const { args = [] } = req.validatedBody;
+            const result = await NetworkService.netstat(args);
+            res.json(result);
         } catch (error) {
-            logError('Netstat command failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Netstat command failed', {
+                args: req.validatedBody?.args,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Netstat command failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -128,27 +135,24 @@ router.post('/netstat',
  */
 router.post('/whois',
     SecurityMiddleware.rateLimiter,
-    SecurityMiddleware.inputValidation,
+    Validators.createValidationMiddleware(domainSchema),
     async(req, res) => {
         try {
-            const { domain } = req.body;
-
-            if (!domain) {
-                return res.status(400).json({ error: 'Domain is required' });
-            }
-
-            const cacheKey = cacheManager.createNetworkKey(domain, 'whois');
-
-            const result = await cacheManager.getOrSet(cacheKey, async() => {
-                const output = await CommandExecutor.whois(domain);
-                return OutputFormatter.formatOutput(output);
-            }, 3600); // 1 час кэш
-
-            res.json({ output: result });
-
+            const { domain } = req.validatedBody;
+            const result = await NetworkService.whois(domain);
+            res.json(result);
         } catch (error) {
-            logError('Whois command failed', error);
-            res.status(500).json({ error: error.message });
+            logError('Whois command failed', {
+                domain: req.validatedBody?.domain,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Whois command failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
         }
     }
 );
@@ -158,17 +162,19 @@ router.post('/whois',
  */
 router.get('/system', async(req, res) => {
     try {
-        const systemInfo = CommandExecutor.getSystemInfo();
-        const formattedInfo = OutputFormatter.formatSystemInfo(systemInfo);
-
-        res.json({
-            info: systemInfo,
-            formatted: formattedInfo
-        });
-
+        const result = await NetworkService.getSystemInfo();
+        res.json(result);
     } catch (error) {
-        logError('System info failed', error);
-        res.status(500).json({ error: error.message });
+        logError('System info failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
+        res.status(500).json({ 
+            error: 'System info failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
@@ -177,16 +183,19 @@ router.get('/system', async(req, res) => {
  */
 router.get('/commands', async(req, res) => {
     try {
-        const availableCommands = await CommandExecutor.getAvailableCommands();
-
-        res.json({
-            commands: availableCommands,
-            total: availableCommands.length
-        });
-
+        const result = await NetworkService.getAvailableCommands();
+        res.json(result);
     } catch (error) {
-        logError('Available commands failed', error);
-        res.status(500).json({ error: error.message });
+        logError('Available commands failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
+        res.status(500).json({ 
+            error: 'Available commands failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
@@ -195,23 +204,94 @@ router.get('/commands', async(req, res) => {
  */
 router.get('/health', async(req, res) => {
     try {
-        const health = {
-            status: 'OK',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            memory: process.memoryUsage(),
-            cache: cacheManager.getStats()
-        };
-
-        res.json(health);
-
+        const result = await NetworkService.getHealthStatus();
+        res.json(result);
     } catch (error) {
-        logError('Health check failed', error);
+        logError('Health check failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
         res.status(500).json({
             status: 'ERROR',
-            error: error.message
+            error: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });
+
+/**
+ * Command test endpoint
+ */
+router.post('/test-command',
+    SecurityMiddleware.rateLimiter,
+    Validators.createValidationMiddleware(Joi.object({
+        command: Validators.commandSchema.required()
+    })),
+    async(req, res) => {
+        try {
+            const { command } = req.validatedBody;
+            const result = await NetworkService.testCommand(command);
+            res.json(result);
+        } catch (error) {
+            logError('Command test failed', {
+                command: req.validatedBody?.command,
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Command test failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+);
+
+/**
+ * Cache management endpoint
+ */
+router.get('/cache/stats', async(req, res) => {
+    try {
+        const result = await NetworkService.getCacheStats();
+        res.json(result);
+    } catch (error) {
+        logError('Cache stats failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
+        res.status(500).json({ 
+            error: 'Cache stats failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Clear cache endpoint
+ */
+router.post('/cache/clear',
+    SecurityMiddleware.rateLimiter,
+    async(req, res) => {
+        try {
+            const result = await NetworkService.clearCache();
+            res.json(result);
+        } catch (error) {
+            logError('Cache clear failed', {
+                error: error.message,
+                ip: req.ip
+            });
+            
+            res.status(500).json({ 
+                error: 'Cache clear failed',
+                details: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+);
 
 module.exports = router;
