@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const OpenAI = require('openai');
 const sqlite3 = require('sqlite3').verbose();
+const https = require('https');
+const fs = require('fs');
 
 // Load environment variables
 require('dotenv').config();
@@ -12,19 +14,18 @@ require('dotenv').config();
 const { processUnknownCommand, detectLegalRequest, searchLegalDatabase } = require('./command_processor');
 
 const app = express();
-const PORT = 3000;
+const PORT = 3001; // Changed to 3001 as requested
+
+// SSL configuration
+const sslOptions = {
+    key: fs.readFileSync('./ssl/key.pem'),
+    cert: fs.readFileSync('./ssl/cert.pem')
+};
 
 // Initialize OpenAI client
-let openai = null;
-if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'docker-test-key') {
-    try {
-        openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
-    } catch (error) {
-        console.log('OpenAI not available:', error.message);
-    }
-}
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Initialize SQLite database
 const db = new sqlite3.Database('./terminal_data.db', (err) => {
@@ -57,28 +58,6 @@ function initDatabase() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
         
-        // Create screensaver status table
-        db.run(`CREATE TABLE IF NOT EXISTS screensaver_status (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            current_screensaver TEXT NOT NULL DEFAULT 'matrix',
-            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        
-        // Initialize screensaver status if table is empty
-        db.get("SELECT COUNT(*) as count FROM screensaver_status", (err, row) => {
-            if (err) {
-                console.error('Error checking screensaver status:', err.message);
-            } else if (row.count === 0) {
-                db.run("INSERT INTO screensaver_status (current_screensaver) VALUES ('matrix')", (err) => {
-                    if (err) {
-                        console.error('Error initializing screensaver status:', err.message);
-                    } else {
-                        console.log('Screensaver status initialized');
-                    }
-                });
-            }
-        });
-        
         console.log('Database tables initialized');
     });
 }
@@ -110,37 +89,6 @@ function formatOutput(output) {
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .join('\n') + '\n';
-}
-
-// Helper function to get current screensaver status
-function getCurrentScreensaverStatus() {
-    return new Promise((resolve, reject) => {
-        db.get("SELECT current_screensaver FROM screensaver_status ORDER BY id DESC LIMIT 1", (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row ? row.current_screensaver : 'matrix');
-            }
-        });
-    });
-}
-
-// Helper function to update screensaver status
-function updateScreensaverStatus(screensaver) {
-    return new Promise((resolve, reject) => {
-        db.run("INSERT INTO screensaver_status (current_screensaver) VALUES (?)", [screensaver], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
-}
-
-// Helper function to get next screensaver (alternate between matrix and oscilloscope)
-function getNextScreensaver(currentScreensaver) {
-    return currentScreensaver === 'matrix' ? 'oscilloscope' : 'matrix';
 }
 
 // Special formatting for ping command
@@ -410,31 +358,18 @@ app.get('/api/openai/history', (req, res) => {
 
 // Process unknown command endpoint
 app.post('/api/process-command', async (req, res) => {
-    console.log('=== /api/process-command called ===');
-    console.log('Request body:', req.body);
-    console.log('Request headers:', req.headers);
-    
     try {
         const { command, isAdmin = false } = req.body;
         
-        console.log('Extracted command:', command);
-        console.log('Extracted isAdmin:', isAdmin);
-        
         if (!command) {
-            console.log('Error: No command provided');
             return res.status(400).json({ error: 'Command is required' });
         }
         
-        console.log('Calling processUnknownCommand with:', command);
         const response = await processUnknownCommand(command, isAdmin);
-        console.log('processUnknownCommand response length:', response ? response.length : 0);
-        
         res.json({ output: response });
-        console.log('=== /api/process-command completed successfully ===');
         
     } catch (error) {
         console.error('Command processing error:', error);
-        console.error('Error stack:', error.stack);
         res.status(500).json({ error: 'Failed to process command: ' + error.message });
     }
 });
@@ -488,58 +423,6 @@ app.post('/api/show-api-connections', (req, res) => {
     }
 });
 
-// API endpoint to get current screensaver status
-app.get('/api/screensaver/status', async (req, res) => {
-    try {
-        const currentScreensaver = await getCurrentScreensaverStatus();
-        const nextScreensaver = getNextScreensaver(currentScreensaver);
-        res.json({ 
-            current: currentScreensaver,
-            next: nextScreensaver
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// API endpoint to activate screensaver
-app.post('/api/screensaver/activate', async (req, res) => {
-    try {
-        const { screensaver } = req.body;
-        
-        if (!screensaver || !['matrix', 'oscilloscope'].includes(screensaver)) {
-            return res.status(400).json({ error: 'Invalid screensaver. Use "matrix" or "oscilloscope"' });
-        }
-        
-        await updateScreensaverStatus(screensaver);
-        
-        res.json({ 
-            output: `Activating ${screensaver} screensaver...`,
-            screensaver: screensaver
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// API endpoint to switch to next screensaver
-app.post('/api/screensaver/switch', async (req, res) => {
-    try {
-        const currentScreensaver = await getCurrentScreensaverStatus();
-        const nextScreensaver = getNextScreensaver(currentScreensaver);
-        
-        await updateScreensaverStatus(nextScreensaver);
-        
-        res.json({ 
-            output: `Switching to ${nextScreensaver} screensaver...`,
-            previous: currentScreensaver,
-            current: nextScreensaver
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // Serve the main HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'retro_terminal_site.html'));
@@ -551,9 +434,12 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`🚀 Retro Terminal API Server running on http://localhost:${PORT}`);
+// Create HTTPS server
+const httpsServer = https.createServer(sslOptions, app);
+
+// Start HTTPS server
+httpsServer.listen(PORT, () => {
+    console.log(`🔒 Secure Retro Terminal API Server running on https://localhost:${PORT}`);
     console.log(`📡 Available endpoints:`);
     console.log(`   POST /api/ping - Test connectivity`);
     console.log(`   POST /api/traceroute - Trace network path`);
@@ -569,4 +455,5 @@ app.listen(PORT, () => {
     console.log(`   GET  /api/openai/history - OpenAI requests history`);
     console.log(`   GET  /api/system - System information`);
     console.log(`   GET  /api/health - Health check`);
+    console.log(`\n⚠️  Note: Using self-signed certificate. You may need to accept the security warning in your browser.`);
 }); 

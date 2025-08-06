@@ -19,7 +19,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.ping.mockResolvedValue('PING localhost (127.0.0.1): 56 data bytes');
-            mockCacheManager.createNetworkKey.mockReturnValue('network_ping_abc123');
+            mockCacheManager.CacheManager.createNetworkKey.mockReturnValue('network_ping_abc123');
             mockCacheManager.getOrSet.mockResolvedValue('Formatted ping output');
 
             const result = await NetworkService.ping('localhost');
@@ -35,7 +35,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.ping.mockRejectedValue(new Error('Host unreachable'));
-            mockCacheManager.createNetworkKey.mockReturnValue('network_ping_abc123');
+            mockCacheManager.CacheManager.createNetworkKey.mockReturnValue('network_ping_abc123');
             mockCacheManager.getOrSet.mockRejectedValue(new Error('Host unreachable'));
 
             await expect(NetworkService.ping('invalid-host')).rejects.toThrow('Host unreachable');
@@ -48,7 +48,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.traceroute.mockResolvedValue('traceroute to google.com');
-            mockCacheManager.createNetworkKey.mockReturnValue('network_traceroute_abc123');
+            mockCacheManager.CacheManager.createNetworkKey.mockReturnValue('network_traceroute_abc123');
             mockCacheManager.getOrSet.mockResolvedValue('Formatted traceroute output');
 
             const result = await NetworkService.traceroute('google.com');
@@ -66,7 +66,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.nslookup.mockResolvedValue('nslookup result');
-            mockCacheManager.createNetworkKey.mockReturnValue('network_nslookup_abc123');
+            mockCacheManager.CacheManager.createNetworkKey.mockReturnValue('network_nslookup_abc123');
             mockCacheManager.getOrSet.mockResolvedValue('Formatted nslookup output');
 
             const result = await NetworkService.nslookup('google.com');
@@ -84,7 +84,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.netstat.mockResolvedValue('netstat output');
-            mockCacheManager.createCommandKey.mockReturnValue('cmd_netstat_abc123');
+            mockCacheManager.CacheManager.createCommandKey.mockReturnValue('cmd_netstat_abc123');
             mockCacheManager.getOrSet.mockResolvedValue('Formatted netstat output');
 
             const result = await NetworkService.netstat(['-an']);
@@ -102,7 +102,7 @@ describe('NetworkService', () => {
             const mockCacheManager = require('../src/modules/cache');
             
             mockCommandExecutor.whois.mockResolvedValue('whois output');
-            mockCacheManager.createNetworkKey.mockReturnValue('network_whois_abc123');
+            mockCacheManager.CacheManager.createNetworkKey.mockReturnValue('network_whois_abc123');
             mockCacheManager.getOrSet.mockResolvedValue('Formatted whois output');
 
             const result = await NetworkService.whois('example.com');

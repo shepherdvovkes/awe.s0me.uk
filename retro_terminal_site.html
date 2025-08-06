@@ -198,6 +198,57 @@
             z-index: 2000;
         }
         
+        /* Autocomplete styles */
+        .autocomplete-container {
+            position: absolute;
+            background: #000;
+            border: 1px solid #33ff33;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            color: #33ff33;
+            box-shadow: 
+                0 0 10px rgba(51, 255, 51, 0.3),
+                0 0 20px rgba(51, 255, 51, 0.1);
+        }
+        
+        .autocomplete-suggestion {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #1a1a1a;
+            transition: background-color 0.2s ease;
+        }
+        
+        .autocomplete-suggestion:hover,
+        .autocomplete-suggestion.selected {
+            background: #1a3a1a;
+            color: #33ff33;
+        }
+        
+        .autocomplete-suggestion:last-child {
+            border-bottom: none;
+        }
+        
+        /* Scrollbar for autocomplete */
+        .autocomplete-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .autocomplete-container::-webkit-scrollbar-track {
+            background: #000;
+        }
+        
+        .autocomplete-container::-webkit-scrollbar-thumb {
+            background: #33ff33;
+            border-radius: 4px;
+        }
+        
+        .autocomplete-container::-webkit-scrollbar-thumb:hover {
+            background: #4dff4d;
+        }
+        
         .login-screen .terminal {
             width: 100%;
             height: 100%;
@@ -620,6 +671,24 @@
             background: #000;
         }
         
+        /* Oscilloscope Screensaver */
+        .oscilloscope-screensaver {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 3000;
+            display: none;
+        }
+        
+        #oscilloscope-container {
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        
         .screensaver-text {
             position: absolute;
             bottom: 50px;
@@ -701,10 +770,6 @@
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
         </div>
     </div>
     
@@ -761,7 +826,16 @@
         <canvas id="matrix-canvas"></canvas>
         <div class="screensaver-text">
             <div>UNIX/32V Terminal - Press any key to continue</div>
-            <div style="font-size: 12px; margin-top: 10px;">PDP-11/70 System Idle</div>
+            <div style="font-size: 12px; margin-top: 10px;">PDP-11/70 System Idle - Matrix Mode</div>
+        </div>
+    </div>
+    
+    <!-- Oscilloscope Screensaver -->
+    <div class="oscilloscope-screensaver" id="oscilloscopeScreensaver">
+        <div id="oscilloscope-container"></div>
+        <div class="screensaver-text">
+            <div>UNIX/32V Terminal - Press any key to continue</div>
+            <div style="font-size: 12px; margin-top: 10px;">PDP-11/70 System Idle - Oscilloscope Mode</div>
         </div>
     </div>
     
@@ -835,6 +909,7 @@
         const commandInput = document.getElementById('commandInput');
         const visualMenu = document.getElementById('visualMenu');
         const matrixScreensaver = document.getElementById('matrixScreensaver');
+        const oscilloscopeScreensaver = document.getElementById('oscilloscopeScreensaver');
         
         // Login elements
         const loginScreen = document.getElementById('loginScreen');
@@ -853,6 +928,8 @@
         let currentHost = 'pdp11';
         let currentDir = '/usr/user';
         let screensaverActive = false;
+        let currentScreensaver = 0; // 0 = matrix, 1 = oscilloscope
+        let oscilloscopeScene, oscilloscopeCamera, oscilloscopeRenderer, oscilloscopeComposer;
         
         // Matrix screensaver variables
         let matrixScene, matrixCamera, matrixRenderer;
@@ -1069,16 +1146,215 @@
             // This function is kept for compatibility
         }
         
-        function showScreensaver() {
+        // Oscilloscope Screensaver Setup
+        function initOscilloscopeScreensaver() {
+            const container = document.getElementById('oscilloscope-container');
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Create canvas for Three.js
+            const canvas = document.createElement('canvas');
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            container.appendChild(canvas);
+            
+            // Three.js setup
+            oscilloscopeScene = new THREE.Scene();
+            oscilloscopeCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            oscilloscopeCamera.position.z = 8;
+            
+            oscilloscopeRenderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            oscilloscopeRenderer.setSize(window.innerWidth, window.innerHeight);
+            oscilloscopeRenderer.setPixelRatio(window.devicePixelRatio);
+            
+            // Line geometry and material
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(3000 * 3);
+            const colors = new Float32Array(3000 * 3);
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const line = new THREE.Line(geometry, material);
+            oscilloscopeScene.add(line);
+            
+            // Simple rendering without post-processing for compatibility
+            oscilloscopeComposer = null;
+            
+            // Animation variables
+            let signalTime = 0;
+            let signalType = 0;
+            const signalDuration = 8000;
+            const points = [];
+            const MAX_POINTS = 3000;
+            
+            const signalTypes = [
+                "Sine Wave", "Square Wave", "Sawtooth Wave", 
+                "Lissajous (1:2)", "Lissajous (3:2)", 
+                "Lissajous (5:4)", "Damped Spiral"
+            ];
+            
+            // Signal generation
+            function getSignalPoint(t) {
+                let x = 0, y = 0;
+                const A = 3;
+                
+                switch (signalType) {
+                    case 0: // Sine Wave
+                        x = (t * 0.005) % (2 * Math.PI) * 2 - (2*Math.PI);
+                        y = A * Math.sin(t * 0.05);
+                        break;
+                    case 1: // Square Wave
+                        x = (t * 0.005) % (2 * Math.PI) * 2 - (2*Math.PI);
+                        y = A * Math.sign(Math.sin(t * 0.05));
+                        break;
+                    case 2: // Sawtooth Wave
+                        x = (t * 0.005) % (2 * Math.PI) * 2 - (2*Math.PI);
+                        y = A * (2 * (t * 0.025 - Math.floor(0.5 + t * 0.025)));
+                        break;
+                    case 3: // Lissajous (1:2)
+                        x = A * Math.sin(t * 0.05);
+                        y = A * Math.sin(t * 0.1 + Math.PI / 2);
+                        break;
+                    case 4: // Lissajous (3:2)
+                        x = A * Math.sin(t * 0.075);
+                        y = A * Math.sin(t * 0.05);
+                        break;
+                    case 5: // Lissajous (5:4)
+                        x = A * Math.sin(t * 0.05);
+                        y = A * Math.sin(t * 0.04 + Math.PI / 3);
+                        break;
+                    case 6: // Damped Spiral
+                        const decay = Math.exp(-t * 0.00025);
+                        x = A * Math.sin(t * 0.1) * decay;
+                        y = A * Math.cos(t * 0.1) * decay;
+                        break;
+                }
+                return new THREE.Vector3(x, y, 0);
+            }
+            
+            // Line update logic
+            function updateLine() {
+                const newPoint = getSignalPoint(signalTime);
+                points.push(newPoint);
+                if (points.length > MAX_POINTS) {
+                    points.shift();
+                }
+                
+                const positions = line.geometry.attributes.position.array;
+                const colors = line.geometry.attributes.color.array;
+                
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    positions[i * 3] = p.x;
+                    positions[i * 3 + 1] = p.y;
+                    positions[i * 3 + 2] = p.z;
+                    
+                    const intensity = i / (points.length - 1);
+                    const color = new THREE.Color(0x00ff41);
+                    color.multiplyScalar(Math.pow(intensity, 3));
+                    
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                }
+                
+                line.geometry.setDrawRange(0, points.length);
+                line.geometry.attributes.position.needsUpdate = true;
+                line.geometry.attributes.color.needsUpdate = true;
+            }
+            
+            // Animation loop
+            function animateOscilloscope() {
+                if (!screensaverActive || currentScreensaver !== 1) return;
+                
+                requestAnimationFrame(animateOscilloscope);
+                
+                signalTime += 15;
+                
+                if (signalTime >= signalDuration) {
+                    signalTime = 0;
+                    signalType++;
+                    if (signalType >= signalTypes.length) {
+                        signalType = 0;
+                    }
+                    points.length = 0;
+                }
+                
+                updateLine();
+                oscilloscopeRenderer.render(oscilloscopeScene, oscilloscopeCamera);
+            }
+            
+            // Start animation
+            animateOscilloscope();
+        }
+        
+        async function showScreensaver() {
             screensaverActive = true;
-            matrixScreensaver.style.display = 'block';
-            initMatrixScreensaver();
+            
+            try {
+                // Get current screensaver status from database
+                const response = await fetch('/api/screensaver/status');
+                const data = await response.json();
+                
+                if (data.current === 'matrix') {
+                    // Show matrix screensaver
+                    matrixScreensaver.style.display = 'block';
+                    oscilloscopeScreensaver.style.display = 'none';
+                    initMatrixScreensaver();
+                    currentScreensaver = 0;
+                } else {
+                    // Show oscilloscope screensaver
+                    matrixScreensaver.style.display = 'none';
+                    oscilloscopeScreensaver.style.display = 'block';
+                    initOscilloscopeScreensaver();
+                    currentScreensaver = 1;
+                }
+            } catch (error) {
+                console.error('Error getting screensaver status:', error);
+                // Fallback to matrix
+                matrixScreensaver.style.display = 'block';
+                oscilloscopeScreensaver.style.display = 'none';
+                initMatrixScreensaver();
+                currentScreensaver = 0;
+            }
         }
         
         function hideScreensaver() {
             screensaverActive = false;
             matrixScreensaver.style.display = 'none';
+            oscilloscopeScreensaver.style.display = 'none';
             lastActivity = Date.now();
+        }
+        
+        async function switchScreensaver() {
+            try {
+                // Switch to next screensaver in database
+                const response = await fetch('/api/screensaver/switch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                
+                if (screensaverActive) {
+                    await showScreensaver();
+                }
+            } catch (error) {
+                console.error('Error switching screensaver:', error);
+                // Fallback to local switching
+                currentScreensaver = (currentScreensaver + 1) % 2;
+                if (screensaverActive) {
+                    await showScreensaver();
+                }
+            }
         }
         
         function animateCRT() {
@@ -1121,35 +1397,95 @@
                 tunnelCanvas.width = width;
                 tunnelCanvas.height = height;
             }
+            
+            // Resize oscilloscope renderer
+            if (oscilloscopeRenderer) {
+                oscilloscopeRenderer.setSize(width, height);
+                oscilloscopeCamera.aspect = width / height;
+                oscilloscopeCamera.updateProjectionMatrix();
+            }
         });
         
         // Commands
         const commands = {
             help: () => {
-                let helpText = `help     menu     visual   about
-projects contact  clear    date
-who      uname    ls       pwd
-logout`;
+                const currentDate = new Date().toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                let helpText = `UNIX/32V Terminal - Command Reference (${currentDate})
+
+BASIC COMMANDS:
+help        menu        visual      about
+projects    contact     clear       date
+who         uname       ls          pwd
+logout      cd          cat         echo
+
+SYSTEM COMMANDS:
+motd        matrix      oscilloscope    screensaver
+history     autocomplete    commands
+
+API COMMANDS:
+show api connections    show api con
+show motd db
+
+AI ASSISTANT:
+Unknown commands are automatically processed by AI
+Legal questions are detected and routed to legal database
+
+AUTOCOMPLETION (Fish-style):
+• Press TAB for command completion
+• Use ↑↓ arrows to navigate suggestions
+• Press TAB again to cycle through options
+• Press ESC to cancel autocomplete
+• Supports command + argument completion
+• Audio feedback for different actions`;
                 
                 if (window.isAdmin) {
                     helpText += `
 
-<span class="highlight">ADMIN COMMANDS:</span>
-networking ping     traceroute  nslookup
-netstat    whois    system
+ADMIN COMMANDS:
+networking   ping        traceroute  nslookup
+netstat      whois       system      admin
+sudo
 
-<span class="highlight">SYSTEM COMMANDS:</span>
-motd    matrix`;
+NETWORKING TOOLS:
+ping <hostname>     - Test connectivity
+traceroute <host>   - Trace network path
+nslookup <domain>   - DNS lookup
+whois <domain>      - Domain information
+netstat             - Network statistics
+
+SYSTEM ADMIN:
+system              - System information
+admin               - Admin panel
+sudo <command>      - Execute with privileges`;
                 }
                 
                 helpText += `
 
-<span class="highlight">SYSTEM COMMANDS:</span>
-motd    matrix
+USAGE EXAMPLES:
+• help                    - Show this help
+• ls /usr/bin            - List directory contents
+• cat README             - View file contents
+• ping google.com        - Test network (admin)
+• history                - Show command history
+• autocomplete           - Autocomplete info
+• commands               - List all commands
 
-<span class="highlight">AI ASSISTANT:</span>
-Unknown commands are automatically processed by AI
-Legal questions are detected and routed to legal database`;
+SPECIAL FEATURES:
+• Retro CRT monitor effects
+• Matrix & Oscilloscope screensavers
+• Fish-style autocompletion
+• Command history navigation
+• AI-powered unknown command processing
+• Legal database integration
+• Docker emulation support
+
+TOTAL COMMANDS:
+${getAllAvailableCommands().length} commands available`;
                 
                 return helpText;
             },
@@ -1183,7 +1519,7 @@ user@bsd-terminal.arpa
             
             visual: () => {
                 showVisualMenu();
-                return `<span class="success">Opening MUTT-style menu interface...</span>`;
+                return `Opening MUTT-style menu interface...`;
             },
             
             clear: () => {
@@ -1194,15 +1530,23 @@ user@bsd-terminal.arpa
             date: () => {
                 const now = new Date();
                 const vintage = `Mon Aug  4 14:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} PDT 1975`;
-                return `<span class="success">${vintage}</span>`;
+                return vintage;
             },
             
             who: () => {
-                return `<span class="success">user    tty03   Aug  4 14:30</span>`;
+                return `user    tty03   Aug  4 14:30`;
             },
             
             uname: () => {
-                return `<span class="success">UNIX/32V PDP-11/70</span>`;
+                return `UNIX/32V PDP-11/70`;
+            },
+            
+            'show api connections': () => {
+                return processShowApiConnections();
+            },
+            
+            'show api con': () => {
+                return processShowApiConnections();
             },
             
             ls: (args) => {
@@ -1222,12 +1566,12 @@ user@bsd-terminal.arpa
             },
             
             pwd: () => {
-                return `<span class="success">${currentDir}</span>`;
+                return currentDir;
             },
             
             cd: (args) => {
                 if (!args || args.length === 0) {
-                    return `<span class="error">cd: usage: cd <directory></span>`;
+                    return `cd: usage: cd <directory>`;
                 }
                 
                 const newDir = args[0];
@@ -1250,7 +1594,7 @@ user@bsd-terminal.arpa
                 }
                 
                 updatePrompt();
-                return `<span class="success">Changed directory to: ${currentDir}</span>`;
+                return `Changed directory to: ${currentDir}`;
             },
             
             logout: () => {
@@ -1278,7 +1622,7 @@ user@bsd-terminal.arpa
             // Admin-only networking commands
             networking: () => {
                 if (!window.isAdmin) {
-                    return `<span class="error">networking: Permission denied. Admin access required.</span>`;
+                    return `networking: Permission denied. Admin access required.`;
                 }
                 return `ping       traceroute  nslookup
 netstat    whois      system
@@ -1291,47 +1635,47 @@ show motd db - Display MOTD database history`;
             
             ping: (args) => {
                 if (!window.isAdmin) {
-                    return `<span class="error">ping: Permission denied. Admin access required.</span>`;
+                    return `ping: Permission denied. Admin access required.`;
                 }
                 if (!args || args.length === 0) {
-                    return `<span class="error">ping: usage: ping <hostname></span>`;
+                    return `ping: usage: ping <hostname>`;
                 }
                 return performPing(args[0]);
             },
             
             traceroute: (args) => {
                 if (!window.isAdmin) {
-                    return `<span class="error">traceroute: Permission denied. Admin access required.</span>`;
+                    return `traceroute: Permission denied. Admin access required.`;
                 }
                 if (!args || args.length === 0) {
-                    return `<span class="error">traceroute: usage: traceroute <hostname></span>`;
+                    return `traceroute: usage: traceroute <hostname>`;
                 }
                 return performTraceroute(args[0]);
             },
             
             nslookup: (args) => {
                 if (!window.isAdmin) {
-                    return `<span class="error">nslookup: Permission denied. Admin access required.</span>`;
+                    return `nslookup: Permission denied. Admin access required.`;
                 }
                 if (!args || args.length === 0) {
-                    return `<span class="error">nslookup: usage: nslookup <hostname></span>`;
+                    return `nslookup: usage: nslookup <hostname>`;
                 }
                 return performNslookup(args[0]);
             },
             
             netstat: (args) => {
                 if (!window.isAdmin) {
-                    return `<span class="error">netstat: Permission denied. Admin access required.</span>`;
+                    return `netstat: Permission denied. Admin access required.`;
                 }
                 return performNetstat(args);
             },
             
             whois: (args) => {
                 if (!window.isAdmin) {
-                    return `<span class="error">whois: Permission denied. Admin access required.</span>`;
+                    return `whois: Permission denied. Admin access required.`;
                 }
                 if (!args || args.length === 0) {
-                    return `<span class="error">whois: usage: whois <domain></span>`;
+                    return `whois: usage: whois <domain>`;
                 }
                 return performWhois(args[0]);
             },
@@ -1346,14 +1690,234 @@ show motd db - Display MOTD database history`;
             
             system: () => {
                 if (!window.isAdmin) {
-                    return `<span class="error">system: Permission denied. Admin access required.</span>`;
+                    return `system: Permission denied. Admin access required.`;
                 }
                 return performSystemInfo();
             },
             
-            matrix: () => {
-                showScreensaver();
-                return `<span class="success">Activating Matrix screensaver...</span>`;
+            matrix: async () => {
+                try {
+                    await fetch('/api/screensaver/activate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ screensaver: 'matrix' })
+                    });
+                    await showScreensaver();
+                    return `Switching to Matrix screensaver...`;
+                } catch (error) {
+                    console.error('Error activating matrix screensaver:', error);
+                    await showScreensaver();
+                    return `Switching to Matrix screensaver...`;
+                }
+            },
+            
+            oscilloscope: async () => {
+                try {
+                    await fetch('/api/screensaver/activate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ screensaver: 'oscilloscope' })
+                    });
+                    await showScreensaver();
+                    return `Switching to Oscilloscope screensaver...`;
+                } catch (error) {
+                    console.error('Error activating oscilloscope screensaver:', error);
+                    await showScreensaver();
+                    return `Switching to Oscilloscope screensaver...`;
+                }
+            },
+            
+            screensaver: async () => {
+                try {
+                    await fetch('/api/screensaver/switch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    await switchScreensaver();
+                    return `Switching screensaver...`;
+                } catch (error) {
+                    console.error('Error switching screensaver:', error);
+                    await switchScreensaver();
+                    return `Switching screensaver...`;
+                }
+            },
+            
+            // New commands for autocompletion demo
+            history: () => {
+                const currentDate = new Date().toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                if (commandHistory.length === 0) {
+                    return `No command history available.`;
+                }
+                
+                const recentCommands = commandHistory.slice(0, 15);
+                const totalCommands = commandHistory.length;
+                
+                let output = `Command History (${currentDate})
+
+RECENT COMMANDS (${recentCommands.length}/${totalCommands}):
+${recentCommands.map((cmd, index) => 
+    `${String(index + 1).padStart(2, ' ')}: ${cmd}`
+).join('\n')}
+
+NAVIGATION:
+• Use ↑↓ arrows to browse history
+• ↑ (up arrow)    - Go to previous command
+• ↓ (down arrow)  - Go to next command
+• ESC             - Return to current input
+
+HISTORY STATS:
+• Total commands: ${totalCommands}
+• Recent commands: ${recentCommands.length}
+• History limit: 50 commands
+
+TIPS:
+• Commands are automatically saved to history
+• Duplicate commands are not stored
+• History persists during session`;
+                
+                return output;
+            },
+            
+            autocomplete: () => {
+                const currentDate = new Date().toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                return `Fish-style Autocomplete System (${currentDate})
+
+KEYBOARD SHORTCUTS:
+• TAB                    - Complete command or show suggestions
+• ↑↓ Arrows             - Navigate through suggestions
+• TAB (multiple)         - Cycle through options
+• ESC                    - Cancel autocomplete
+• ↑↓ (no suggestions)   - Navigate command history
+
+SMART FEATURES:
+• Command completion     - Type 'pi' → 'ping'
+• Argument completion    - Type 'ping g' → 'ping google.com'
+• Context-aware         - Different args for different commands
+• Audio feedback        - Different sounds for different actions
+• Visual indicators     - Green border when active
+
+SUPPORTED COMMANDS:
+• Basic: help, ls, cd, cat, echo, pwd, clear, date
+• System: motd, matrix, oscilloscope, screensaver
+• Admin: ping, traceroute, nslookup, whois, netstat
+• API: show api connections, show motd db
+
+AUDIO FEEDBACK:
+• High tone (800-1200Hz)  - Successful completion
+• Medium tone (600-800Hz) - Suggestions available
+• Low tone (300-400Hz)    - No matches found
+
+EXAMPLES:
+• Type 'pi' + TAB         → 'ping'
+• Type 'ping g' + TAB     → 'ping google.com'
+• Type 'cat R' + TAB      → 'cat README'
+• Type 'cd /u' + TAB      → 'cd /usr'
+
+TOTAL COMMANDS:
+${getAllAvailableCommands().length} commands with autocompletion support`;
+            },
+            
+            commands: () => {
+                const allCommands = getAllAvailableCommands();
+                const currentDate = new Date().toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                // Categorize commands
+                const basicCommands = ['help', 'menu', 'visual', 'about', 'projects', 'contact', 'clear', 'date', 'who', 'uname', 'ls', 'pwd', 'logout', 'cd', 'cat', 'echo'];
+                const systemCommands = ['motd', 'matrix', 'oscilloscope', 'screensaver', 'history', 'autocomplete', 'commands'];
+                const apiCommands = ['show api connections', 'show api con', 'show motd db'];
+                const adminCommands = ['networking', 'ping', 'traceroute', 'nslookup', 'netstat', 'whois', 'system', 'admin', 'sudo'];
+                
+                let output = `UNIX/32V Terminal - Complete Command List (${currentDate})
+
+BASIC COMMANDS (${basicCommands.length}):
+${basicCommands.join(' ')}
+
+SYSTEM COMMANDS (${systemCommands.length}):
+${systemCommands.join(' ')}
+
+API COMMANDS (${apiCommands.length}):
+${apiCommands.join(' ')}
+
+ADMIN COMMANDS (${adminCommands.length}):
+${adminCommands.join(' ')}
+
+TOTAL:
+${allCommands.length} commands available
+
+COMMAND CATEGORIES:
+• Basic: File system, navigation, information
+• System: Screensavers, history, utilities  
+• API: Database connections and queries
+• Admin: Network tools and system management
+
+USAGE TIP:
+Type partial command and press TAB for autocompletion!`;
+                
+                return output;
+            },
+            
+            cat: (args) => {
+                if (!args || args.length === 0) {
+                    return `cat: usage: cat <filename>`;
+                }
+                const filename = args[0];
+                const files = {
+                    'README': 'UNIX/32V Terminal Emulator\nRetro PDP-11/70 Interface\n\nType "help" for available commands.',
+                    '.profile': 'export PATH=/usr/bin:/usr/local/bin\nexport TERM=vt100\n# Welcome to UNIX/32V',
+                    'startup': '#!/bin/sh\necho "UNIX/32V System Ready"\ndate\nwho'
+                };
+                return files[filename] || `cat: ${filename}: No such file or directory`;
+            },
+            
+            echo: (args) => {
+                if (!args || args.length === 0) {
+                    return '';
+                }
+                return args.join(' ');
+            },
+            
+            admin: () => {
+                if (!window.isAdmin) {
+                    return `admin: Permission denied. Admin access required.`;
+                }
+                return `Admin Panel Active
+
+Admin Commands:
+• networking - Network diagnostics
+• system - System information  
+• ping/traceroute/nslookup - Network tools
+• netstat/whois - Advanced networking`;
+            },
+            
+            sudo: (args) => {
+                if (!window.isAdmin) {
+                    return `sudo: Permission denied. Admin access required.`;
+                }
+                if (!args || args.length === 0) {
+                    return `sudo: usage: sudo <command>`;
+                }
+                const command = args[0];
+                return `Executing with elevated privileges: ${command}`;
             }
         };
         
@@ -1564,12 +2128,355 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 return `${command}: ${error.message}`;
             }
         }
+
+        async function processShowApiConnections() {
+            try {
+                const response = await fetch('/api/show-api-connections', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    return data.output;
+                } else {
+                    return `show api connections: ${data.error}`;
+                }
+            } catch (error) {
+                return `show api connections: ${error.message}`;
+            }
+        }
+        
+        // Autocompletion system like Fish shell
+        let commandHistory = [];
+        let currentHistoryIndex = -1;
+        let originalInput = '';
+        let autocompleteSuggestions = [];
+        let currentSuggestionIndex = -1;
+        let isAutocompleteActive = false;
+
+        // Get all available commands including admin commands
+        function getAllAvailableCommands() {
+            const baseCommands = [
+                'help', 'menu', 'visual', 'about', 'projects', 'contact', 
+                'clear', 'date', 'who', 'uname', 'ls', 'pwd', 'logout',
+                'motd', 'matrix', 'oscilloscope', 'screensaver',
+                'show api connections', 'show api con', 'show motd db',
+                'cd', 'cat', 'echo', 'history', 'autocomplete', 'commands'
+            ];
+            
+            const adminCommands = [
+                'networking', 'ping', 'traceroute', 'nslookup', 
+                'netstat', 'whois', 'system', 'admin', 'sudo'
+            ];
+            
+            return window.isAdmin ? [...baseCommands, ...adminCommands] : baseCommands;
+        }
+
+        // Find matching commands for autocompletion
+        function findMatchingCommands(partial) {
+            const allCommands = getAllAvailableCommands();
+            return allCommands.filter(cmd => 
+                cmd.toLowerCase().startsWith(partial.toLowerCase())
+            );
+        }
+
+        // Get command arguments for autocompletion
+        function getCommandArguments(commandName) {
+            const argsMap = {
+                'ping': ['localhost', 'google.com', '8.8.8.8', 'github.com'],
+                'traceroute': ['localhost', 'google.com', '8.8.8.8', 'github.com'],
+                'nslookup': ['localhost', 'google.com', 'github.com', 'stackoverflow.com'],
+                'whois': ['google.com', 'github.com', 'stackoverflow.com', 'example.com'],
+                'cd': ['..', '~', '/', '/usr', '/usr/bin', '/etc'],
+                'cat': ['README', '.profile', 'startup'],
+                'ls': ['/', '/usr', '/usr/bin', '/etc', '/var'],
+                'echo': ['Hello World', 'UNIX/32V', 'PDP-11/70'],
+                'sudo': getAllAvailableCommands().filter(cmd => cmd !== 'sudo')
+            };
+            return argsMap[commandName] || [];
+        }
+
+        // Smart autocomplete that handles both commands and arguments
+        function smartAutocomplete(input) {
+            const parts = input.trim().split(/\s+/);
+            
+            if (parts.length === 1) {
+                // Autocomplete command
+                return findMatchingCommands(parts[0]);
+            } else if (parts.length === 2) {
+                // Autocomplete argument for command
+                const command = parts[0];
+                const partialArg = parts[1];
+                const possibleArgs = getCommandArguments(command);
+                
+                return possibleArgs.filter(arg => 
+                    arg.toLowerCase().startsWith(partialArg.toLowerCase())
+                ).map(arg => `${command} ${arg}`);
+            }
+            
+            return [];
+        }
+
+        // Show autocomplete suggestions
+        function showAutocompleteSuggestions(suggestions) {
+            // Remove existing suggestions
+            const existingSuggestions = document.querySelectorAll('.autocomplete-container');
+            existingSuggestions.forEach(el => el.remove());
+            
+            if (suggestions.length === 0) return;
+            
+            // Create suggestions container
+            const suggestionsContainer = document.createElement('div');
+            suggestionsContainer.className = 'autocomplete-container';
+            suggestionsContainer.style.cssText = `
+                position: absolute;
+                top: ${commandInput.offsetTop + commandInput.offsetHeight}px;
+                left: ${commandInput.offsetLeft}px;
+                background: #000;
+                border: 1px solid #33ff33;
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 1000;
+                font-family: 'IBM Plex Mono', monospace;
+                font-size: 14px;
+                color: #33ff33;
+                min-width: ${commandInput.offsetWidth}px;
+            `;
+            
+            // Add header with count
+            const headerEl = document.createElement('div');
+            headerEl.className = 'autocomplete-header';
+            headerEl.textContent = `Suggestions (${suggestions.length}):`;
+            headerEl.style.cssText = `
+                padding: 5px 10px;
+                background: #1a1a1a;
+                border-bottom: 1px solid #33ff33;
+                font-weight: bold;
+                color: #33ff33;
+            `;
+            suggestionsContainer.appendChild(headerEl);
+            
+            suggestions.forEach((suggestion, index) => {
+                const suggestionEl = document.createElement('div');
+                suggestionEl.className = 'autocomplete-suggestion';
+                suggestionEl.textContent = suggestion;
+                suggestionEl.style.cssText = `
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #1a1a1a;
+                    background: ${index === currentSuggestionIndex ? '#1a3a1a' : 'transparent'};
+                    transition: background-color 0.2s ease;
+                `;
+                
+                suggestionEl.addEventListener('click', () => {
+                    commandInput.value = suggestion;
+                    hideAutocompleteSuggestions();
+                    commandInput.focus();
+                });
+                
+                suggestionEl.addEventListener('mouseenter', () => {
+                    // Update highlighting
+                    document.querySelectorAll('.autocomplete-suggestion').forEach((el, i) => {
+                        el.style.background = i === index ? '#1a3a1a' : 'transparent';
+                    });
+                    currentSuggestionIndex = index;
+                });
+                
+                suggestionsContainer.appendChild(suggestionEl);
+            });
+            
+            document.body.appendChild(suggestionsContainer);
+            
+            // Add visual indicator to input
+            commandInput.style.borderColor = '#33ff33';
+            commandInput.style.boxShadow = '0 0 5px rgba(51, 255, 51, 0.5)';
+        }
+
+        // Hide autocomplete suggestions
+        function hideAutocompleteSuggestions() {
+            const existingSuggestions = document.querySelectorAll('.autocomplete-container');
+            existingSuggestions.forEach(el => el.remove());
+            currentSuggestionIndex = -1;
+            isAutocompleteActive = false;
+            
+            // Remove visual indicator from input
+            commandInput.style.borderColor = '';
+            commandInput.style.boxShadow = '';
+        }
+
+        // Apply autocomplete
+        function applyAutocomplete() {
+            const input = commandInput.value;
+            const suggestions = smartAutocomplete(input);
+            
+            if (suggestions.length === 1) {
+                // Single match - complete it
+                commandInput.value = suggestions[0];
+                hideAutocompleteSuggestions();
+                // Play completion sound
+                playAutocompleteSound('complete');
+            } else if (suggestions.length > 1) {
+                // Multiple matches - show suggestions
+                currentSuggestionIndex = 0;
+                isAutocompleteActive = true;
+                autocompleteSuggestions = suggestions;
+                showAutocompleteSuggestions(suggestions);
+                // Play suggestion sound
+                playAutocompleteSound('suggest');
+            } else {
+                hideAutocompleteSuggestions();
+                // Play no match sound
+                playAutocompleteSound('nomatch');
+            }
+        }
+
+        // Play autocomplete sounds (using Web Audio API)
+        function playAutocompleteSound(type) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                switch(type) {
+                    case 'complete':
+                        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.1);
+                        break;
+                    case 'suggest':
+                        oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.05);
+                        break;
+                    case 'nomatch':
+                        oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(300, audioContext.currentTime + 0.1);
+                        break;
+                }
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } catch (error) {
+                // Silently fail if audio is not supported
+                console.log('Audio not supported:', error);
+            }
+        }
+
+        // Enhanced command input event listeners
+        commandInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                const command = this.value.trim();
+                
+                // Add to history if not empty
+                if (command && !commandHistory.includes(command)) {
+                    commandHistory.unshift(command);
+                    if (commandHistory.length > 50) {
+                        commandHistory.pop();
+                    }
+                }
+                
+                hideAutocompleteSuggestions();
+                executeCommand(command);
+                this.value = '';
+                this.focus();
+                currentHistoryIndex = -1;
+                originalInput = '';
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                if (isAutocompleteActive && autocompleteSuggestions.length > 1) {
+                    // Cycle through suggestions
+                    currentSuggestionIndex = (currentSuggestionIndex + 1) % autocompleteSuggestions.length;
+                    showAutocompleteSuggestions(autocompleteSuggestions);
+                } else {
+                    // Apply autocomplete
+                    applyAutocomplete();
+                }
+            } else if (e.key === 'Escape') {
+                hideAutocompleteSuggestions();
+                currentHistoryIndex = -1;
+                originalInput = '';
+            } else if (e.key === 'ArrowUp') {
+                if (isAutocompleteActive && autocompleteSuggestions.length > 1) {
+                    e.preventDefault();
+                    currentSuggestionIndex = (currentSuggestionIndex - 1 + autocompleteSuggestions.length) % autocompleteSuggestions.length;
+                    showAutocompleteSuggestions(autocompleteSuggestions);
+                } else {
+                    // Command history navigation
+                    e.preventDefault();
+                    if (currentHistoryIndex === -1) {
+                        originalInput = this.value;
+                    }
+                    if (commandHistory.length > 0) {
+                        currentHistoryIndex = Math.min(currentHistoryIndex + 1, commandHistory.length - 1);
+                        this.value = commandHistory[currentHistoryIndex] || originalInput;
+                    }
+                }
+            } else if (e.key === 'ArrowDown') {
+                if (isAutocompleteActive && autocompleteSuggestions.length > 1) {
+                    e.preventDefault();
+                    currentSuggestionIndex = (currentSuggestionIndex + 1) % autocompleteSuggestions.length;
+                    showAutocompleteSuggestions(autocompleteSuggestions);
+                } else {
+                    // Command history navigation
+                    e.preventDefault();
+                    if (currentHistoryIndex > 0) {
+                        currentHistoryIndex--;
+                        this.value = currentHistoryIndex === -1 ? originalInput : commandHistory[currentHistoryIndex];
+                    } else if (currentHistoryIndex === 0) {
+                        currentHistoryIndex = -1;
+                        this.value = originalInput;
+                    }
+                }
+            } else {
+                // Reset autocomplete state when typing
+                if (isAutocompleteActive) {
+                    hideAutocompleteSuggestions();
+                }
+                currentHistoryIndex = -1;
+                originalInput = '';
+            }
+        });
+
+        // Update autocomplete suggestions on input
+        commandInput.addEventListener('input', function() {
+            const input = this.value;
+            if (input.trim()) {
+                autocompleteSuggestions = smartAutocomplete(input);
+                if (autocompleteSuggestions.length > 1) {
+                    currentSuggestionIndex = 0;
+                    isAutocompleteActive = true;
+                    showAutocompleteSuggestions(autocompleteSuggestions);
+                } else {
+                    hideAutocompleteSuggestions();
+                }
+            } else {
+                hideAutocompleteSuggestions();
+            }
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.autocomplete-container') && e.target !== commandInput) {
+                hideAutocompleteSuggestions();
+            }
+        });
         
         commandInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 e.stopPropagation();
-                const command = this.value.trim().toLowerCase();
+                const command = this.value.trim();
                 executeCommand(command);
                 this.value = '';
                 this.focus();
@@ -1579,18 +2486,6 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
         // Ensure input stays focused
         commandInput.addEventListener('blur', function() {
             setTimeout(() => this.focus(), 10);
-        });
-        
-        // Additional Enter key handling
-        commandInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                const command = this.value.trim().toLowerCase();
-                executeCommand(command);
-                this.value = '';
-                this.focus();
-            }
         });
         
         function executeCommand(command) {
@@ -2061,14 +2956,7 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                                         // Initialize the terminal silently (without boot messages)
                                         initTerminalSilent(false);
                                         
-                                        // Initialize the rest of the application
-                                        initCRTEffects();
-                                        animateCRT();
-                                        
-                                        // Start Matrix effect after 5 seconds if no activity
-                                        matrixTimeout = setTimeout(() => {
-                                            startMatrixEffect();
-                                        }, 5000);
+                                        // Matrix effect removed to prevent duplicate "Follow the white rabbit" message
                                     }, 5000); // 5 seconds tunnel animation
                                 }, 3000); // 3 seconds wait after dots
                             }, 500);
@@ -2083,12 +2971,19 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
         
         // Initialize everything
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded - Starting initialization');
+            
+            // Initialize CRT effects immediately for startup animation
+            initCRTEffects();
+            animateCRT();
+            
             // Hide both login screen and terminal initially
             const loginScreen = document.getElementById('loginScreen');
             const terminalContainer = document.getElementById('terminalContainer');
             loginScreen.style.display = 'none';
             terminalContainer.style.display = 'none';
             
+            console.log('Starting startup animation...');
             // Start the startup animation
             startStartupAnimation();
         });
@@ -2146,6 +3041,13 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 }
             }, 1000);
             
+            // Switch screensavers every 30 seconds when active
+            setInterval(async () => {
+                if (screensaverActive) {
+                    await switchScreensaver();
+                }
+            }, 30000);
+            
             // Clear output and show ready prompt
             output.innerHTML = '';
             const readyDiv = document.createElement('div');
@@ -2167,8 +3069,13 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                     const data = await response.json();
                     
                     if (response.ok) {
+                        console.log('MOTD API response:', data);
+                        console.log('MOTD output:', data.output);
+                        
                         // Split the MOTD output by lines and display each line separately
                         const motdLines = data.output.split('\n');
+                        console.log('MOTD lines:', motdLines);
+                        
                         motdLines.forEach((line, index) => {
                             if (line.trim()) {
                                 const motdDiv = document.createElement('div');
@@ -2291,10 +3198,16 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                     const data = await response.json();
                     
                     if (response.ok) {
-                        const motdDiv = document.createElement('div');
-                        motdDiv.className = 'output-line motd';
-                        output.appendChild(motdDiv);
-                        queueType(motdDiv, `MOTD: ${data.output}`, 30);
+                        // Split the MOTD output by lines and display each line separately
+                        const motdLines = data.output.split('\n');
+                        motdLines.forEach((line, index) => {
+                            if (line.trim()) {
+                                const motdDiv = document.createElement('div');
+                                motdDiv.className = 'output-line motd';
+                                output.appendChild(motdDiv);
+                                queueType(motdDiv, line.trim(), 30);
+                            }
+                        });
                     } else {
                         // Fallback MOTD if API fails
                         const motdDiv = document.createElement('div');

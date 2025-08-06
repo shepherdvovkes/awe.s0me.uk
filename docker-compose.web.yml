@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  retro-terminal:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: retro-terminal
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - OPENAI_API_KEY=docker-test-key
+      - DISABLE_AI=true
+    volumes:
+      - ./logs:/app/logs
+      - ./ssl:/app/ssl
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3 

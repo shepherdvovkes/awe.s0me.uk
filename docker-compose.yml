@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Основной эмулятор с ассемблером и Pascal
+  retro-emulator:
+    build: .
+    container_name: retro-emulator
+    volumes:
+      - ./Emulation/workspace:/workspace
+      - ./docker/tools:/opt/tools
+      - ./docker/output:/workspace/output
+    ports:
+      - "8081:8080"
+    environment:
+      - DISPLAY=${DISPLAY}
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
+  # Специализированный контейнер для DOSBox
+  dosbox-emulator:
+    build: .
+    container_name: dosbox-emulator
+    volumes:
+      - ./Emulation/workspace:/workspace
+      - ./docker/dos-programs:/workspace/dos
+    command: dosbox -conf /root/.dosbox/dosbox-0.74-3.conf
+    stdin_open: true
+    tty: true
+
+  # Контейнер для QEMU эмуляции
+  qemu-emulator:
+    build: .
+    container_name: qemu-emulator
+    volumes:
+      - ./Emulation/workspace:/workspace
+      - ./docker/iso:/workspace/iso
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
+  # Веб-интерфейс для управления эмуляторами (отключен - нет Node.js в контейнере)
+  # retro-web:
+  #   build: .
+  #   container_name: retro-web
+  #   volumes:
+  #     - ./Emulation/workspace:/workspace
+  #     - ./docker/web:/workspace/web
+  #   ports:
+  #     - "8080:8080"
+  #   command: node /workspace/web/server.js
+  #   depends_on:
+  #     - retro-emulator
+
+  # Основное веб-приложение с ретро-терминалом
+  retro-terminal:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: retro-terminal
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./logs:/app/logs
+      - ./ssl:/app/ssl
+    restart: unless-stopped
+
+networks:
+  default:
+    name: retro-network 

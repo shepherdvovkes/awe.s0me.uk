@@ -25,8 +25,8 @@ class AIService {
             const previousMotds = await databaseManager.getMOTDHistory(5);
             const previousMessages = previousMotds.map(item => item.message);
 
-            // Generate multilingual MOTD
-            const multilingualMotds = await aiProcessor.generateMultilingualMOTD();
+            // Generate multilingual MOTD with previous messages to avoid repetition
+            const multilingualMotds = await aiProcessor.generateMultilingualMOTD(previousMessages);
 
             // Format output
             const formattedOutput = OutputFormatter.formatMOTD(multilingualMotds);

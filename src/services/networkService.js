@@ -1,9 +1,11 @@
 const CommandExecutor = require('../modules/commandExecutor');
 const cacheManager = require('../modules/cache');
-const { CacheManager } = require('../modules/cache');
 const OutputFormatter = require('../utils/formatters');
 const { logInfo, logError } = require('../utils/logger');
 const config = require('../config/app');
+
+// Get CacheManager class from the module exports
+const { CacheManager } = require('../modules/cache');
 
 /**
  * Network service for handling network-related operations

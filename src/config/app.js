@@ -48,7 +48,7 @@ class AppConfig {
 
     get security() {
         return {
-            allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+            allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3001'],
             rateLimitWindow: parseInt(process.env.RATE_LIMIT_WINDOW) || 900000, // 15 minutes
             rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 100,
             aiRateLimitWindow: parseInt(process.env.AI_RATE_LIMIT_WINDOW) || 60000, // 1 minute

@@ -1,5 +1,5 @@
 module.exports = {
-    testEnvironment: 'node',
+    testEnvironment: 'jsdom',
     roots: ['<rootDir>/tests'],
     testMatch: [
         '**/__tests__/**/*.js',
@@ -14,5 +14,8 @@ module.exports = {
     coverageReporters: ['text', 'lcov', 'html'],
     setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
     testTimeout: 10000,
-    verbose: true
+    verbose: true,
+    testEnvironmentOptions: {
+        url: 'http://localhost:3000'
+    }
 }; 

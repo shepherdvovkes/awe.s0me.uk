@@ -1,0 +1,23 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.env.local
+.env.production
+.env.development
+logs/*
+*.log
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+# docker/ - исключено, так как нужно для сборки
+tests/
+docs/
+*.md 

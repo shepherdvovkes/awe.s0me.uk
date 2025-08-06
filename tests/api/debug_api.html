@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Debug Test</title>
+    <style>
+        body { font-family: monospace; background: #000; color: #0f0; margin: 20px; }
+        .output { background: #001100; border: 1px solid #0f0; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .warning { color: #ff0; }
+        button { background: #0f0; color: #000; border: none; padding: 10px; margin: 5px; cursor: pointer; }
+        .log { background: #000; border: 1px solid #333; padding: 5px; margin: 5px 0; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 API Debug Test</h1>
+    
+    <button onclick="testSimple()">Test 1: Simple Request</button>
+    <button onclick="testRunHelp()">Test 2: run help</button>
+    <button onclick="testRunAsm()">Test 3: run asm</button>
+    <button onclick="testRunList()">Test 4: run list</button>
+    <button onclick="clearLog()">Clear Log</button>
+    
+    <div id="result" class="output">Click a button to start debugging...</div>
+    <div id="log" class="log">Debug log will appear here...</div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api/process-command';
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+        
+        function clearLog() {
+            document.getElementById('log').textContent = 'Debug log cleared...\n';
+            document.getElementById('result').textContent = 'Log cleared...';
+        }
+        
+        async function testAPI(command, testName) {
+            const result = document.getElementById('result');
+            result.innerHTML = `<span class="warning">🔄 Testing: ${testName}</span>`;
+            
+            log(`=== Starting ${testName} ===`);
+            log(`Command: ${command}`);
+            log(`API URL: ${API_URL}`);
+            
+            try {
+                log('Creating fetch request...');
+                
+                const requestBody = { command: command };
+                log(`Request body: ${JSON.stringify(requestBody)}`);
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                log(`Response status: ${response.status}`);
+                log(`Response headers: ${JSON.stringify([...response.headers.entries()])}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    log(`Error response: ${errorText}`);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                log(`Response data: ${JSON.stringify(data)}`);
+                
+                result.innerHTML = `<span class="success">✅ ${testName} Success!</span>\n\n${data.output}`;
+                log(`=== ${testName} completed successfully ===`);
+                
+            } catch (error) {
+                log(`Error: ${error.message}`);
+                log(`Error stack: ${error.stack}`);
+                
+                result.innerHTML = `<span class="error">❌ ${testName} Failed!</span>\n\n`;
+                result.innerHTML += `Error: ${error.message}\n\n`;
+                result.innerHTML += `Debug info:\n`;
+                result.innerHTML += `- API URL: ${API_URL}\n`;
+                result.innerHTML += `- Command: ${command}\n`;
+                result.innerHTML += `- Error: ${error.message}\n`;
+                
+                log(`=== ${testName} failed ===`);
+            }
+        }
+        
+        function testSimple() {
+            testAPI('help', 'Simple Help Command');
+        }
+        
+        function testRunHelp() {
+            testAPI('run help', 'Run Help Command');
+        }
+        
+        function testRunAsm() {
+            testAPI('run asm', 'Run Assembler Command');
+        }
+        
+        function testRunList() {
+            testAPI('run list', 'Run List Command');
+        }
+        
+        // Auto-test on page load
+        window.addEventListener('load', function() {
+            log('Page loaded, API URL: ' + API_URL);
+            log('Browser: ' + navigator.userAgent);
+            log('Ready for testing...');
+        });
+    </script>
+</body>
+</html> 

@@ -79,6 +79,43 @@ class DatabaseManager {
                     user_agent TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )`
+            },
+            {
+                name: 'zakon_online_searches',
+                query: `CREATE TABLE IF NOT EXISTS zakon_online_searches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query TEXT NOT NULL,
+                    total_count INTEGER DEFAULT 0,
+                    page INTEGER DEFAULT 1,
+                    page_size INTEGER DEFAULT 10,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`
+            },
+            {
+                name: 'zakon_online_cases',
+                query: `CREATE TABLE IF NOT EXISTS zakon_online_cases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    search_id INTEGER NOT NULL,
+                    case_id TEXT NOT NULL,
+                    court_name TEXT,
+                    judgment_form TEXT,
+                    justice_kind TEXT,
+                    case_date TEXT,
+                    case_number TEXT,
+                    summary TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (search_id) REFERENCES zakon_online_searches(id) ON DELETE CASCADE
+                )`
+            },
+            {
+                name: 'zakon_online_full_texts',
+                query: `CREATE TABLE IF NOT EXISTS zakon_online_full_texts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id TEXT NOT NULL,
+                    full_text TEXT,
+                    highlights TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`
             }
         ];
 
@@ -305,6 +342,87 @@ class DatabaseManager {
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    /**
+     * Получает статистику поисков "Закон Онлайн"
+     * @returns {Promise<Object>} - Статистика поисков
+     */
+    async getZakonOnlineStats() {
+        try {
+            const stats = await this.get(`
+                SELECT 
+                    COUNT(*) as total_searches,
+                    SUM(total_count) as total_cases_found,
+                    AVG(total_count) as avg_cases_per_search,
+                    MAX(created_at) as last_search_date
+                FROM zakon_online_searches
+            `);
+            
+            const recentSearches = await this.getAll(`
+                SELECT query, total_count, created_at 
+                FROM zakon_online_searches 
+                ORDER BY created_at DESC 
+                LIMIT 5
+            `);
+            
+            return {
+                ...stats,
+                recentSearches
+            };
+        } catch (error) {
+            logError('Error getting Zakon Online stats', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Получает топ поисковых запросов
+     * @param {number} limit - Количество записей
+     * @returns {Promise<Array>} - Топ запросов
+     */
+    async getTopSearches(limit = 10) {
+        try {
+            const sql = `
+                SELECT 
+                    query,
+                    COUNT(*) as search_count,
+                    AVG(total_count) as avg_results,
+                    MAX(created_at) as last_used
+                FROM zakon_online_searches
+                GROUP BY query
+                ORDER BY search_count DESC, avg_results DESC
+                LIMIT ?
+            `;
+            
+            return await this.getAll(sql, [limit]);
+        } catch (error) {
+            logError('Error getting top searches', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Очищает старые записи поисков
+     * @param {number} daysOld - Количество дней
+     * @returns {Promise<number>} - Количество удаленных записей
+     */
+    async cleanupOldSearches(daysOld = 30) {
+        try {
+            const result = await this.runQuery(`
+                DELETE FROM zakon_online_searches 
+                WHERE created_at < datetime('now', '-${daysOld} days')
+            `);
+            
+            logInfo(`Cleaned up old searches older than ${daysOld} days`, { 
+                deletedCount: result.changes 
+            });
+            
+            return result.changes;
+        } catch (error) {
+            logError('Error cleaning up old searches', error);
+            throw error;
         }
     }
 }

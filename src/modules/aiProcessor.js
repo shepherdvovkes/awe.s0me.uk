@@ -4,6 +4,9 @@ const config = require('../config/app');
 const databaseManager = require('./database');
 const cacheManager = require('./cache');
 
+// Get CacheManager class from the module exports
+const { CacheManager } = require('./cache');
+
 /**
  * Процессор AI запросов
  */
@@ -22,7 +25,7 @@ class AIProcessor {
      */
     async generateMOTD(language = 'en', previousMessages = []) {
         try {
-            const cacheKey = cacheManager.createMOTDKey(language);
+            const cacheKey = CacheManager.createMOTDKey(language);
 
             return await cacheManager.getOrSet(cacheKey, async() => {
                 const basePrompt = `You are Bender from Futurama, now running a retro UNIX system from 1975. Generate a unique, witty 1-line message of the day (MOTD) in ${this._getLanguageName(language)} that I haven't seen before. Keep it short, funny, and in character. Use only ASCII characters - NO emojis. Style it like old computer terminals with simple text only.`;
@@ -69,9 +72,10 @@ class AIProcessor {
 
     /**
      * Генерирует многоязычные MOTD
+     * @param {Array} previousMessages - Предыдущие сообщения для избежания повторений
      * @returns {Promise<Array>} - Массив MOTD на разных языках
      */
-    async generateMultilingualMOTD() {
+    async generateMultilingualMOTD(previousMessages = []) {
         const languages = [
             { code: 'en', name: 'English' },
             { code: 'ru', name: 'Russian' },
@@ -84,7 +88,7 @@ class AIProcessor {
 
         for (const lang of languages) {
             try {
-                const motd = await this.generateMOTD(lang.code);
+                const motd = await this.generateMOTD(lang.code, previousMessages);
                 multilingualMotds.push(motd);
             } catch (error) {
                 logError(`Failed to generate MOTD for ${lang.code}`, error);

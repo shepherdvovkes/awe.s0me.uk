@@ -1,6 +1,11 @@
 // Настройка окружения для тестов
 process.env.NODE_ENV = 'test';
 
+// Полифилы для jsdom
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
 // Мокаем логгер для тестов
 jest.mock('../src/utils/logger', () => ({
     logInfo: jest.fn(),
@@ -26,7 +31,7 @@ jest.mock('../src/modules/database', () => ({
 }));
 
 // Мокаем кэш для тестов
-jest.mock('../src/modules/cache', () => ({
+const mockCacheManager = {
     getOrSet: jest.fn().mockImplementation(async (key, fetchFunction) => {
         return await fetchFunction();
     }),
@@ -38,12 +43,21 @@ jest.mock('../src/modules/cache', () => ({
     getKeys: jest.fn().mockReturnValue([]),
     has: jest.fn().mockReturnValue(false),
     getTtl: jest.fn(),
-    setTtl: jest.fn(),
+    setTtl: jest.fn()
+};
+
+const mockCacheManagerClass = {
     createCommandKey: jest.fn().mockImplementation((command, args) => `cmd_${command}_${args.join('_')}`),
     createMOTDKey: jest.fn().mockImplementation((language) => `motd_${language}_${Date.now()}`),
     createAIKey: jest.fn().mockImplementation((prompt, type) => `ai_${type}_${prompt.length}`),
     createNetworkKey: jest.fn().mockImplementation((hostname, command) => `network_${command}_${hostname}`)
-}));
+};
+
+jest.mock('../src/modules/cache', () => {
+    const mock = mockCacheManager;
+    mock.CacheManager = mockCacheManagerClass;
+    return mock;
+});
 
 // Глобальные настройки для тестов
 global.console = {

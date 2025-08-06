@@ -9,6 +9,8 @@ const ErrorHandler = require('./middleware/errorHandler');
 // Импорт маршрутов
 const networkRoutes = require('./routes/network');
 const aiRoutes = require('./routes/ai');
+const zakonOnlineRoutes = require('./routes/zakonOnline');
+const dockerRoutes = require('./routes/docker');
 
 const app = express();
 
@@ -21,9 +23,6 @@ async function initializeApp() {
         await databaseManager.initialize();
         logInfo('Database initialized successfully');
 
-        // Настраиваем middleware безопасности
-        app.use(SecurityMiddleware.getAllMiddleware());
-
         // Парсинг JSON
         app.use(express.json({ limit: '1mb' }));
         app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -31,14 +30,19 @@ async function initializeApp() {
         // Статические файлы
         app.use(express.static(path.join(__dirname, '..')));
 
-        // Маршруты
-        app.use('/api', networkRoutes);
-        app.use('/api', aiRoutes);
-
         // Главная страница
         app.get('/', (req, res) => {
             res.sendFile(path.join(__dirname, '..', 'retro_terminal_site.html'));
         });
+
+        // Настраиваем middleware безопасности только для API
+        app.use('/api', SecurityMiddleware.getAllMiddleware());
+
+        // Маршруты
+        app.use('/api', networkRoutes);
+        app.use('/api', aiRoutes);
+        app.use('/api/zakon-online', zakonOnlineRoutes);
+        app.use('/api/docker', dockerRoutes);
 
         // Обработчики ошибок
         ErrorHandler.getAllErrorHandlers().forEach(handler => {
@@ -86,6 +90,19 @@ async function startServer() {
             logInfo('   GET  /api/health - Health check');
             logInfo('   GET  /api/commands - Available commands');
             logInfo('   GET  /api/status - AI service status');
+            logInfo('   GET  /api/zakon-online/search - Search legal database');
+            logInfo('   GET  /api/zakon-online/courts - Get courts list');
+            logInfo('   GET  /api/zakon-online/history - Search history');
+            logInfo('   GET  /api/zakon-online/stats - Search statistics');
+            logInfo('   POST /api/docker/assembler - Run NASM assembler');
+            logInfo('   POST /api/docker/pascal - Run Free Pascal compiler');
+            logInfo('   POST /api/docker/dos - Run DOS program via DOSBox');
+            logInfo('   POST /api/docker/qemu - Run QEMU emulation');
+            logInfo('   GET  /api/docker/files - List workspace files');
+            logInfo('   POST /api/docker/sample - Create sample program');
+            logInfo('   GET  /api/docker/status - Docker containers status');
+            logInfo('   POST /api/docker/start - Start Docker containers');
+            logInfo('   POST /api/docker/stop - Stop Docker containers');
         });
 
         // Graceful shutdown

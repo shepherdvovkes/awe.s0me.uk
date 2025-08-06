@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 const sqlite3 = require('sqlite3').verbose();
 const fetch = require('node-fetch');
+const EmulationManager = require('./Emulation/emulation_manager');
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -22,7 +23,21 @@ const LEGAL_KEYWORDS = {
         'житло', 'мешканець', 'приватизація', 'реєстрація місця проживання',
         'судова практика', 'судебна практика', 'юридична практика',
         'тцк', 'центр', 'территориальний', 'комплектування', 'армія', 'військовий',
-        'справа', 'дело', 'номер', 'список', 'найди', 'знайди', 'виведи'
+        'справа', 'дело', 'номер', 'список', 'найди', 'знайди', 'виведи',
+        'власник житла', 'колишній мешканець', 'ситуація', 'не проживає',
+        'участі не брав', 'повторно зареєструвати', 'місце проживання',
+        'надати судову практику', 'прошу надати', 'юридична ситуація',
+        'жилье', 'жилищный', 'жилищное', 'жилищная', 'жилищные',
+        'выселение', 'выселить', 'выселяют', 'выселили',
+        'освобождение', 'освободить', 'освобождают', 'освободили',
+        'регистрация', 'прописка', 'прописать', 'прописывают',
+        'собственник', 'собственность', 'собственник жилья',
+        'бывший жилец', 'бывший житель', 'бывший квартирант',
+        'не проживает', 'не живет', 'не обитает',
+        'приватизация', 'приватизировать', 'приватизировали',
+        'участие не принимал', 'участия не принимал',
+        'хочет зарегистрироваться', 'хочет прописаться',
+        'повторная регистрация', 'повторно зарегистрироваться'
     ],
     ru: [
         'закон', 'право', 'юридический', 'адвокат', 'суд', 'иск', 'договор', 'соглашение',
@@ -119,7 +134,48 @@ function extractSearchQueries(text) {
         'номер справи': 9,
         'номер дела': 9,
         'судові справи': 9,
-        'судебные дела': 9
+        'судебные дела': 9,
+        // Дополнительные ключевые слова для жилищных вопросов
+        'власник житла': 10,
+        'власник жилья': 10,
+        'собственник жилья': 10,
+        'собственник жилплощади': 10,
+        'бывший жилец': 9,
+        'бывший житель': 9,
+        'бывший квартирант': 9,
+        'не проживает': 8,
+        'не живет': 8,
+        'не обитает': 8,
+        'давно не проживает': 9,
+        'давно не живет': 9,
+        'участие не принимал': 7,
+        'участия не принимал': 7,
+        'в приватизации не участвовал': 8,
+        'приватизации не участвовал': 8,
+        'хочет зарегистрироваться': 9,
+        'хочет прописаться': 9,
+        'повторная регистрация': 9,
+        'повторно зарегистрироваться': 9,
+        'место проживания': 8,
+        'место жительства': 8,
+        'надати судову практику': 6,
+        'надати юридичну практику': 6,
+        'прошу надати': 4,
+        'юридична ситуація': 5,
+        'жилищный вопрос': 8,
+        'жилищная проблема': 8,
+        'жилищное право': 8,
+        'выселение жильца': 9,
+        'выселение бывшего жильца': 10,
+        'освобождение жилплощади': 9,
+        'регистрация по месту жительства': 10,
+        'прописка по месту жительства': 10,
+        'право собственности на жилье': 9,
+        'защита прав собственника': 8,
+        'жилищное законодательство': 7,
+        'жилищный кодекс': 7,
+        'судовая практика по жилищным вопросам': 9,
+        'судебная практика по жилищным спорам': 9
     };
 
     // Extract key phrases from text
@@ -266,135 +322,42 @@ function detectLegalRequest(query) {
 }
 
 /**
- * Process unknown command through OpenAI API
+ * Process unknown command through intelligent AI system
  * @param {string} command - The unknown command
  * @param {boolean} isAdmin - Whether user is admin
  * @returns {Promise<string>} - AI response
  */
 async function processUnknownCommand(command, isAdmin = false) {
     try {
-        // Special handling for TCC (ТЦК) requests
-        const lowerCommand = command.toLowerCase();
-        if (lowerCommand.includes('тцк') || lowerCommand.includes('центр') && lowerCommand.includes('территориальный') || 
-            lowerCommand.includes('комплектование') || lowerCommand.includes('армия')) {
-            
-            console.log('Processing TCC request:', command);
-            return await processTCCRequest(command);
-        }
-        
-        // Check if this is a request for court case numbers
-        const isCourtCaseRequest = await detectCourtCaseNumbersRequest(command);
-        if (isCourtCaseRequest) {
-            console.log('Processing court case numbers request:', command);
+        // Check for run command first
+        if (command.trim().toLowerCase().startsWith('run ')) {
+            console.log('Processing run command:', command);
             try {
-                // Try Zakon Online API first
-                const zakonToken = process.env.ZAKON_TOKEN;
-                if (zakonToken && zakonToken !== 'DECxxxxxxxxx') {
-                    try {
-                        return await searchZakonOnlineAPI(command);
-                    } catch (apiError) {
-                        console.error('Zakon Online API error:', apiError);
-                        // Fall back to OpenAI
-                    }
-                }
-                
-                // Fallback to OpenAI for court case numbers
-                const completion = await openai.chat.completions.create({
-                    model: "gpt-3.5-turbo",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `You are a Ukrainian legal database assistant specializing in court case numbers.
-The user is asking for court case numbers related to their legal query.
-Provide a comprehensive response about relevant court cases, including:
-- Case numbers and references
-- Court decisions and rulings
-- Legal precedents
-- Relevant legal articles and codes
-Respond in Ukrainian or Russian based on the user's language.
-Keep the response informative and professional.`
-                        },
-                        {
-                            role: "user",
-                            content: command
-                        }
-                    ],
-                    max_tokens: 1000,
-                    temperature: 0.3
-                });
-
-                const response = completion.choices[0].message.content;
-
-                // Store the court case request in database
-                db.run(`INSERT INTO openai_requests (request_type, prompt, response) VALUES (?, ?, ?)`, 
-                    ['court_case_numbers_request', command, response], 
-                    function(err) {
-                        if (err) {
-                            console.error('Error storing court case request:', err);
-                        }
-                    }
-                );
-
-                return response;
-                
-            } catch (error) {
-                console.error('Court case numbers processing error:', error);
-                return `Помилка обробки запиту про номера справ: ${error.message}`;
+                const result = await processRunCommand(command);
+                console.log('Run command result length:', result ? result.length : 0);
+                return result;
+            } catch (runError) {
+                console.error('Run command error:', runError);
+                return `Error in run command: ${runError.message}`;
             }
         }
         
-        // Detect if this is a legal request
-        const legalDetection = detectLegalRequest(command);
+        // Import intelligent processor
+        const { IntelligentProcessor } = require('./intelligent_processor');
+        const processor = new IntelligentProcessor();
         
-        let systemPrompt = `You are a helpful AI assistant in a retro UNIX terminal environment. 
-The user has entered a command that doesn't exist in the system. 
-Provide a helpful response that explains what they might have meant or suggest alternatives.
-Keep responses concise and in the style of a 1970s computer terminal.`;
-
-        if (legalDetection.isLegal) {
-            let responseLanguage = 'English';
-            if (legalDetection.language === 'ru') responseLanguage = 'Russian';
-            if (legalDetection.language === 'uk') responseLanguage = 'Ukrainian';
-            
-            systemPrompt = `You are a legal AI assistant. The user has asked a legal question.
-Provide accurate legal information and guidance. Always recommend consulting with a qualified attorney for specific legal advice.
-Respond in ${responseLanguage}.
-Keep responses professional and informative.`;
+        // Use intelligent processing
+        const result = await processor.processCommand(command, isAdmin);
+        
+        // If result is null, it means it's a known command that should be handled by existing system
+        if (result === null) {
+            return `Command "${command}" should be handled by the existing command system.`;
         }
-
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-                {
-                    role: "system",
-                    content: systemPrompt
-                },
-                {
-                    role: "user",
-                    content: command
-                }
-            ],
-            max_tokens: 500,
-            temperature: 0.7
-        });
-
-        const response = completion.choices[0].message.content;
-
-        // Store the request in database
-        const requestType = legalDetection.isLegal ? 'legal_request' : 'unknown_command';
-        db.run(`INSERT INTO openai_requests (request_type, prompt, response) VALUES (?, ?, ?)`, 
-            [requestType, command, response], 
-            function(err) {
-                if (err) {
-                    console.error('Error storing OpenAI request:', err);
-                }
-            }
-        );
-
-        return response;
+        
+        return result;
 
     } catch (error) {
-        console.error('OpenAI API error:', error);
+        console.error('Intelligent processing error:', error);
         return `Error processing command: ${error.message}`;
     }
 }
@@ -414,7 +377,21 @@ async function searchLegalDatabase(query, language = 'ru') {
             // Use Zakon Online API for Ukrainian legal queries
             if (language === 'uk' || language === 'ru') {
                 try {
-                    return await searchZakonOnlineAPI(query);
+                    // Инициализируем сервис "Закон Онлайн"
+                    const ZakonOnlineService = require('./src/services/zakonOnlineService');
+                    const zakonService = new ZakonOnlineService();
+                    await zakonService.initialize();
+                    
+                    // Выполняем поиск с сохранением в базу данных
+                    const searchResults = await zakonService.performFullSearch(query, {
+                        page: 1,
+                        pageSize: 10,
+                        saveToDatabase: true
+                    });
+                    
+                    // Форматируем результаты для отображения
+                    return zakonService.formatSearchResults(searchResults);
+                    
                 } catch (apiError) {
                     console.error('Zakon Online API error:', apiError);
                     // Fall back to OpenAI if API fails
@@ -682,11 +659,453 @@ Keep the response informative and professional.`
     }
 }
 
+/**
+ * Show API connections information
+ * @returns {string} - Formatted API connections information
+ */
+function showApiConnections() {
+    const connections = [];
+    
+    // Check OpenAI API
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey && openaiKey !== '') {
+        const openaiStatus = openaiKey.startsWith('sk-') ? '✅ Active' : '❌ Invalid';
+        connections.push({
+            name: 'OpenAI API',
+            description: 'Artificial Intelligence and Language Processing',
+            status: openaiStatus,
+            key: openaiKey.substring(0, 20) + '...',
+            usage: 'Legal request detection, AI command processing, intelligent responses'
+        });
+    } else {
+        connections.push({
+            name: 'OpenAI API',
+            description: 'Artificial Intelligence and Language Processing',
+            status: '❌ Not configured',
+            key: 'Not set',
+            usage: 'Legal request detection, AI command processing, intelligent responses'
+        });
+    }
+    
+    // Check Zakon Online API
+    const zakonToken = process.env.ZAKON_TOKEN;
+    if (zakonToken && zakonToken !== '' && zakonToken !== 'DECxxxxxxxxx') {
+        connections.push({
+            name: 'Zakon Online API',
+            description: 'Ukrainian Legal Database and Court Decisions',
+            status: '✅ Active',
+            key: zakonToken.substring(0, 20) + '...',
+            usage: 'Legal database searches, court case lookups, Ukrainian legal information'
+        });
+    } else {
+        connections.push({
+            name: 'Zakon Online API',
+            description: 'Ukrainian Legal Database and Court Decisions',
+            status: '❌ Not configured',
+            key: 'Not set or using default',
+            usage: 'Legal database searches, court case lookups, Ukrainian legal information'
+        });
+    }
+    
+    // Check Anthropic API
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (anthropicKey && anthropicKey !== '') {
+        const anthropicStatus = anthropicKey.startsWith('sk-ant-') ? '✅ Active' : '❌ Invalid';
+        connections.push({
+            name: 'Anthropic API',
+            description: 'Claude AI Assistant',
+            status: anthropicStatus,
+            key: anthropicKey.substring(0, 20) + '...',
+            usage: 'Alternative AI processing, Claude responses'
+        });
+    }
+    
+    // Check Hugging Face API
+    const hfToken = process.env.HF_TOKEN;
+    if (hfToken && hfToken !== '') {
+        connections.push({
+            name: 'Hugging Face API',
+            description: 'Machine Learning Models and AI Services',
+            status: '✅ Active',
+            key: hfToken.substring(0, 20) + '...',
+            usage: 'ML model inference, text processing'
+        });
+    }
+    
+    // Check Hybrid API
+    const hybridKey = process.env.HYBRID_API_KEY;
+    if (hybridKey && hybridKey !== '') {
+        connections.push({
+            name: 'Hybrid API',
+            description: 'Hybrid AI Services',
+            status: '✅ Active',
+            key: hybridKey.substring(0, 20) + '...',
+            usage: 'Hybrid AI processing, multiple model support'
+        });
+    }
+    
+    // Format output
+    let output = `🔌 EXTERNAL API CONNECTIONS\n`;
+    output += `================================\n\n`;
+    
+    connections.forEach((conn, index) => {
+        output += `${index + 1}. ${conn.name}\n`;
+        output += `   Description: ${conn.description}\n`;
+        output += `   Status: ${conn.status}\n`;
+        output += `   Key: ${conn.key}\n`;
+        output += `   Usage: ${conn.usage}\n`;
+        output += `\n`;
+    });
+    
+    output += `📊 SUMMARY:\n`;
+    const activeConnections = connections.filter(c => c.status.includes('✅')).length;
+    const totalConnections = connections.length;
+    output += `   Active: ${activeConnections}/${totalConnections}\n`;
+    output += `   Primary: OpenAI API (${connections.find(c => c.name === 'OpenAI API')?.status || 'Unknown'})\n`;
+    output += `   Legal: Zakon Online API (${connections.find(c => c.name === 'Zakon Online API')?.status || 'Unknown'})\n`;
+    
+    return output;
+}
+
+/**
+ * Показывает статистику поисков "Закон Онлайн"
+ * @returns {Promise<string>} - Статистика поисков
+ */
+async function showZakonOnlineStats() {
+    try {
+        const databaseManager = require('./src/modules/database');
+        const stats = await databaseManager.getZakonOnlineStats();
+        
+        let output = `📊 СТАТИСТИКА ПОШУКІВ "ЗАКОН ОНЛАЙН"\n`;
+        output += `==========================================\n\n`;
+        
+        if (stats.total_searches > 0) {
+            output += `🔍 Всього пошуків: ${stats.total_searches}\n`;
+            output += `📄 Знайдено справ: ${stats.total_cases_found || 0}\n`;
+            output += `📈 Середньо справ на пошук: ${Math.round(stats.avg_cases_per_search || 0)}\n`;
+            output += `📅 Останній пошук: ${stats.last_search_date || 'Немає'}\n\n`;
+            
+            if (stats.recentSearches && stats.recentSearches.length > 0) {
+                output += `🕒 ОСТАННІ ПОШУКИ:\n`;
+                output += `----------------------------------------\n`;
+                stats.recentSearches.forEach((search, index) => {
+                    output += `${index + 1}. "${search.query}"\n`;
+                    output += `   Знайдено: ${search.total_count} справ\n`;
+                    output += `   Дата: ${search.created_at}\n\n`;
+                });
+            }
+        } else {
+            output += `📭 Поки що не було виконано жодного пошуку.\n`;
+            output += `💡 Спробуйте виконати пошук за юридичними питаннями.\n\n`;
+        }
+        
+        return output;
+    } catch (error) {
+        console.error('Error showing Zakon Online stats:', error);
+        return `Помилка отримання статистики: ${error.message}`;
+    }
+}
+
+/**
+ * Показывает историю поисков "Закон Онлайн"
+ * @param {number} limit - Количество записей
+ * @returns {Promise<string>} - История поисков
+ */
+async function showZakonOnlineHistory(limit = 10) {
+    try {
+        const ZakonOnlineService = require('./src/services/zakonOnlineService');
+        const zakonService = new ZakonOnlineService();
+        await zakonService.initialize();
+        
+        const history = await zakonService.getSearchHistory(limit);
+        
+        let output = `📋 ІСТОРІЯ ПОШУКІВ "ЗАКОН ОНЛАЙН"\n`;
+        output += `==========================================\n\n`;
+        
+        if (history && history.length > 0) {
+            history.forEach((search, index) => {
+                output += `${index + 1}. "${search.query}"\n`;
+                output += `   📊 Знайдено: ${search.total_count} справ\n`;
+                output += `   📄 Показано: ${search.cases_found} справ\n`;
+                output += `   📅 Дата: ${search.created_at}\n\n`;
+            });
+        } else {
+            output += `📭 Історія пошуків порожня.\n`;
+            output += `💡 Виконайте пошук для створення історії.\n\n`;
+        }
+        
+        return output;
+    } catch (error) {
+        console.error('Error showing Zakon Online history:', error);
+        return `Помилка отримання історії: ${error.message}`;
+    }
+}
+
+/**
+ * Показывает топ поисковых запросов
+ * @param {number} limit - Количество записей
+ * @returns {Promise<string>} - Топ запросов
+ */
+async function showTopSearches(limit = 10) {
+    try {
+        const databaseManager = require('./src/modules/database');
+        const topSearches = await databaseManager.getTopSearches(limit);
+        
+        let output = `🏆 ТОП ПОШУКОВИХ ЗАПИТІВ\n`;
+        output += `==========================================\n\n`;
+        
+        if (topSearches && topSearches.length > 0) {
+            topSearches.forEach((search, index) => {
+                output += `${index + 1}. "${search.query}"\n`;
+                output += `   🔍 Використано: ${search.search_count} разів\n`;
+                output += `   📈 Середньо результатів: ${Math.round(search.avg_results || 0)}\n`;
+                output += `   📅 Останнє використання: ${search.last_used}\n\n`;
+            });
+        } else {
+            output += `📭 Немає даних для відображення.\n`;
+            output += `💡 Виконайте пошуки для створення статистики.\n\n`;
+        }
+        
+        return output;
+    } catch (error) {
+        console.error('Error showing top searches:', error);
+        return `Помилка отримання топу запитів: ${error.message}`;
+    }
+}
+
+// Initialize emulation manager
+const emulationManager = new EmulationManager();
+
+/**
+ * Process run command for emulation modules
+ * @param {string} command - Full command string
+ * @returns {Promise<string>} - Command result
+ */
+async function processRunCommand(command) {
+    console.log('processRunCommand called with:', command);
+    
+    const parts = command.trim().split(/\s+/);
+    console.log('Command parts:', parts);
+    
+    if (parts.length < 2) {
+        return `Usage: run <emulator> [options]\nAvailable emulators: asm, pascal\nUse "run help" for more information.`;
+    }
+    
+    const subCommand = parts[1].toLowerCase();
+    console.log('Subcommand:', subCommand);
+    
+    try {
+        switch (subCommand) {
+            case 'asm':
+            case 'assembler':
+                console.log('Processing assembler command');
+                return processAssemblerCommand(parts.slice(2));
+            
+            case 'pascal':
+            case 'turbopascal':
+            case 'tp':
+                console.log('Processing pascal command');
+                return processPascalCommand(parts.slice(2));
+            
+            case 'list':
+                console.log('Processing list command');
+                return processListCommand();
+            
+            case 'help':
+                console.log('Processing help command');
+                return processHelpCommand(parts.slice(2));
+            
+            default:
+                console.log('Unknown subcommand:', subCommand);
+                return `Unknown emulator: ${subCommand}\nAvailable emulators: asm, pascal\nUse "run help" for more information.`;
+        }
+    } catch (error) {
+        console.error('Error in processRunCommand:', error);
+        return `Error processing run command: ${error.message}`;
+    }
+}
+
+/**
+ * Process assembler commands
+ * @param {Array} args - Command arguments
+ * @returns {string} - Command result
+ */
+function processAssemblerCommand(args) {
+    if (args.length === 0) {
+        // Initialize assembler
+        const result = emulationManager.initializeEmulator('asm');
+        return result.success ? result.header : result.message;
+    }
+    
+    const action = args[0].toLowerCase();
+    
+    switch (action) {
+        case 'help':
+            const helpResult = emulationManager.getHelp('asm');
+            return `${helpResult.message}\n\n${helpResult.help}`;
+        
+        case 'sample':
+            if (args.length < 2) {
+                return 'Usage: run asm sample <type>\nAvailable types: hello, add';
+            }
+            const sampleResult = emulationManager.createSample('asm', args[1]);
+            return sampleResult.success ? 
+                `${sampleResult.message}\n\nSource code:\n${sampleResult.sourceCode}` : 
+                sampleResult.message;
+        
+        case 'compile':
+            if (args.length < 2) {
+                return 'Usage: run asm compile <filename>';
+            }
+            const loadResult = emulationManager.loadFile(args[1]);
+            if (!loadResult.success) {
+                return loadResult.message;
+            }
+            const compileResult = emulationManager.compile(loadResult.sourceCode);
+            return compileResult.display;
+        
+        case 'execute':
+            if (args.length < 2) {
+                return 'Usage: run asm execute <filename>';
+            }
+            const loadResult2 = emulationManager.loadFile(args[1]);
+            if (!loadResult2.success) {
+                return loadResult2.message;
+            }
+            const compileResult2 = emulationManager.compile(loadResult2.sourceCode);
+            if (!compileResult2.success) {
+                return compileResult2.display;
+            }
+            const executeResult = emulationManager.execute();
+            return executeResult.display;
+        
+        default:
+            // Assume it's a filename - load, compile and execute
+            const loadResult3 = emulationManager.loadFile(args[0]);
+            if (!loadResult3.success) {
+                return loadResult3.message;
+            }
+            const fullResult = emulationManager.compileAndExecute(loadResult3.sourceCode);
+            return fullResult.display;
+    }
+}
+
+/**
+ * Process Pascal commands
+ * @param {Array} args - Command arguments
+ * @returns {string} - Command result
+ */
+function processPascalCommand(args) {
+    if (args.length === 0) {
+        // Initialize Pascal
+        const result = emulationManager.initializeEmulator('pascal');
+        return result.success ? result.header : result.message;
+    }
+    
+    const action = args[0].toLowerCase();
+    
+    switch (action) {
+        case 'help':
+            const helpResult = emulationManager.getHelp('pascal');
+            return `${helpResult.message}\n\n${helpResult.help}`;
+        
+        case 'sample':
+            if (args.length < 2) {
+                return 'Usage: run pascal sample <type>\nAvailable types: hello, factorial, calculator';
+            }
+            const sampleResult = emulationManager.createSample('pascal', args[1]);
+            return sampleResult.success ? 
+                `${sampleResult.message}\n\nSource code:\n${sampleResult.sourceCode}` : 
+                sampleResult.message;
+        
+        case 'compile':
+            if (args.length < 2) {
+                return 'Usage: run pascal compile <filename>';
+            }
+            const loadResult = emulationManager.loadFile(args[1]);
+            if (!loadResult.success) {
+                return loadResult.message;
+            }
+            const compileResult = emulationManager.compile(loadResult.sourceCode);
+            return compileResult.display;
+        
+        case 'execute':
+            if (args.length < 2) {
+                return 'Usage: run pascal execute <filename>';
+            }
+            const loadResult2 = emulationManager.loadFile(args[1]);
+            if (!loadResult2.success) {
+                return loadResult2.message;
+            }
+            const compileResult2 = emulationManager.compile(loadResult2.sourceCode);
+            if (!compileResult2.success) {
+                return compileResult2.display;
+            }
+            const executeResult = emulationManager.execute();
+            return executeResult.display;
+        
+        default:
+            // Assume it's a filename - load, compile and execute
+            const loadResult3 = emulationManager.loadFile(args[0]);
+            if (!loadResult3.success) {
+                return loadResult3.message;
+            }
+            const fullResult = emulationManager.compileAndExecute(loadResult3.sourceCode);
+            return fullResult.display;
+    }
+}
+
+/**
+ * Process list command
+ * @returns {string} - Command result
+ */
+function processListCommand() {
+    const result = emulationManager.listFiles();
+    if (!result.success) {
+        return result.message;
+    }
+    
+    let output = '📁 WORKSPACE FILES\n';
+    output += '==========================================\n\n';
+    
+    if (result.files.length === 0) {
+        output += 'No files found in workspace.\n';
+        output += 'Use "run asm sample hello" or "run pascal sample hello" to create sample programs.\n';
+    } else {
+        result.files.forEach(file => {
+            output += `${file.name} (${file.size} bytes, ${file.type})\n`;
+        });
+    }
+    
+    return output;
+}
+
+/**
+ * Process help command
+ * @param {Array} args - Help arguments
+ * @returns {string} - Command result
+ */
+function processHelpCommand(args) {
+    if (args.length === 0) {
+        const helpResult = emulationManager.getHelp();
+        return `${helpResult.message}\n\n${helpResult.help}`;
+    }
+    
+    const emulatorType = args[0].toLowerCase();
+    const helpResult = emulationManager.getHelp(emulatorType);
+    return `${helpResult.message}\n\n${helpResult.help}`;
+}
+
 module.exports = {
     detectLegalRequest,
     detectCourtCaseNumbersRequest,
     processUnknownCommand,
     searchLegalDatabase,
     extractSearchQueries,
-    processTCCRequest
+    processTCCRequest,
+    showApiConnections,
+    showZakonOnlineStats,
+    showZakonOnlineHistory,
+    showTopSearches,
+    processRunCommand
 }; 
