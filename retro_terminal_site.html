@@ -390,10 +390,54 @@
             font-size: 16px;
             line-height: 1.4;
             margin-bottom: 20px;
+            position: relative;
         }
         
         .system-info div {
             margin: 3px 0;
+        }
+        
+        /* Logo container and spinning logo */
+        .logo-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            text-align: center;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        
+        .pulsing-logo {
+            width: 80px;
+            height: 80px;
+            animation: logoPulse 3s ease-in-out infinite;
+            filter: drop-shadow(0 0 15px rgba(51, 255, 51, 0.9));
+        }
+        
+        .teletype-text {
+            color: #33ff33;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 5px;
+            text-shadow: 
+                0 0 5px #33ff33,
+                0 0 10px rgba(51, 255, 51, 0.6);
+            animation: textGlow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes logoPulse {
+            0% {
+                filter: drop-shadow(0 0 10px rgba(51, 255, 51, 0.6));
+                transform: scale(1);
+            }
+            50% {
+                filter: drop-shadow(0 0 25px rgba(51, 255, 51, 1.0));
+                transform: scale(1.05);
+            }
+            100% {
+                filter: drop-shadow(0 0 10px rgba(51, 255, 51, 0.6));
+                transform: scale(1);
+            }
         }
         
         .terminal-output {
@@ -723,33 +767,6 @@
             50% { opacity: 1; }
         }
         
-        /* Logo container and spinning animation */
-        .logo-container {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 100;
-            width: 80px;
-            height: 80px;
-        }
-        
-        .spinning-logo {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            animation: spinX 4s linear infinite;
-            filter: drop-shadow(0 0 10px rgba(51, 255, 51, 0.8));
-        }
-        
-        @keyframes spinX {
-            0% {
-                transform: rotateX(0deg);
-            }
-            100% {
-                transform: rotateX(360deg);
-            }
-        }
-        
         /* Mobile responsive */
         @media (max-width: 768px) {
             .crt-monitor {
@@ -770,13 +787,6 @@
                 width: 90%;
                 max-width: 300px;
             }
-            
-            .logo-container {
-                width: 60px;
-                height: 60px;
-                top: 15px;
-                right: 15px;
-            }
         }
         
         @media (min-width: 769px) {
@@ -795,6 +805,7 @@
     <!-- Tunnel Animation -->
     <div class="tunnel-animation" id="tunnelAnimation">
         <div class="tunnel-container">
+            <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
@@ -840,6 +851,10 @@
             <div class="crt-screen">
                 <div class="terminal">
                     <div class="system-info">
+                        <div class="logo-container">
+                            <img src="logo/logogreen_nobg.png" alt="Logo" class="pulsing-logo">
+                            <div class="teletype-text">SYSTEM42 ARPA</div>
+                        </div>
                         <div>UNIX/32V - PDP-11/70 Compatible System</div>
                         <div>Teletype Corp. Model ASR-37 Terminal</div>
                         <div>Berkeley Software Distribution - Version 1.0</div>
@@ -847,11 +862,6 @@
                         <div>Login TTY: /dev/tty03 at 300 baud</div>
                         <div>Login: Mon Aug  4 14:30:21 PDT 1975</div>
                         <div></div>
-                    </div>
-                    
-                    <!-- Logo in top right corner with spinning animation -->
-                    <div class="logo-container">
-                        <img src="logo/logogreen_nobg.png" alt="Logo" class="spinning-logo">
                     </div>
                     
                     <div class="terminal-output" id="output">
