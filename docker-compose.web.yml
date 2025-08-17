@@ -16,6 +16,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./ssl:/app/ssl
+      - ./terminal_data.db:/app/terminal_data.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
