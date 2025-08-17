@@ -176,8 +176,8 @@ process.on('SIGINT', () => {
 });
 
 // Start server
-app.listen(PORT, '127.0.0.1', () => {
-    logger.info(`🚀 Production Retro Terminal Server running on http://127.0.0.1:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`🚀 Production Retro Terminal Server running on http://0.0.0.0:${PORT}`);
     logger.info(`📡 Server will be accessible via nginx at https://awe.s0me.uk`);
     logger.info(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
