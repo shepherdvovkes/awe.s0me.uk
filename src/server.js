@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const cors = require('cors');
 const config = require('./config/app');
 const databaseManager = require('./modules/database');
 const { logInfo, logError } = require('./utils/logger');
@@ -26,6 +27,9 @@ async function initializeApp() {
         // Парсинг JSON
         app.use(express.json({ limit: '1mb' }));
         app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+        // Настраиваем CORS для всех запросов
+        app.use(cors(SecurityMiddleware.corsOptions));
 
         // Статические файлы
         app.use(express.static(path.join(__dirname, '..')));

@@ -279,7 +279,7 @@ class SecurityMiddleware {
                         fontSrc: ["'self'", "https://fonts.gstatic.com"],
                         scriptSrc: ["'self'", "'unsafe-inline'"],
                         imgSrc: ["'self'", "data:", "https:"],
-                        connectSrc: ["'self'", "http://localhost:3001"]
+                        connectSrc: ["'self'", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002"]
                     }
                 },
                 hsts: {

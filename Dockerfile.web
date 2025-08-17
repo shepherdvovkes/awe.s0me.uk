@@ -33,4 +33,4 @@ USER nodejs
 EXPOSE 3000
 
 # Команда запуска
-CMD ["node", "server.js"] 
+CMD ["node", "src/server.production.js"] 
