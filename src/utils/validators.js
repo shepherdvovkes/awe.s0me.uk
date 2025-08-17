@@ -46,11 +46,9 @@ class Validators {
     static commandSchema = Joi.string()
         .min(1)
         .max(1000)
-        .pattern(/^[a-zA-Z0-9\s\-_\.\/]+$/)
         .messages({
             'string.empty': 'Command cannot be empty',
-            'string.max': 'Command cannot exceed 1000 characters',
-            'string.pattern.base': 'Invalid command characters'
+            'string.max': 'Command cannot exceed 1000 characters'
         });
 
     /**

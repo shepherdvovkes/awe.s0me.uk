@@ -101,6 +101,176 @@ class AIProcessor {
     }
 
     /**
+     * Интеллектуально определяет тип запроса и обрабатывает его
+     * @param {string} command - Команда/запрос
+     * @param {boolean} isAdmin - Является ли пользователь админом
+     * @returns {Promise<Object>} - Результат обработки с типом
+     */
+    async intelligentlyProcessCommand(command, isAdmin = false) {
+        try {
+            // 1. Сначала проверяем, есть ли уже готовый ответ в базе
+            const existingResponse = await databaseManager.findExistingResponse(command);
+            if (existingResponse) {
+                return {
+                    type: existingResponse.request_type,
+                    response: existingResponse.response,
+                    cached: true,
+                    source: 'database'
+                };
+            }
+
+            // 2. Если ответа нет, определяем тип запроса через AI
+            const requestType = await this.determineRequestType(command);
+            
+            // 3. Обрабатываем запрос в соответствии с определенным типом
+            let response;
+            let responseType = 'text';
+            
+            switch (requestType) {
+                case 'legal_request':
+                    response = await this.processLegalRequest(command, 'ru');
+                    responseType = 'legal_response';
+                    break;
+                case 'court_case':
+                    response = await this.processCourtCaseRequest(command);
+                    break;
+                case 'tcc_request':
+                    response = await this.processTCCRequest(command);
+                    break;
+                case 'motd':
+                    response = await this.generateMOTD('en');
+                    break;
+                default:
+                    // Если тип не определен, обрабатываем как неизвестную команду
+                    response = await this.processUnknownCommand(command, isAdmin);
+                    break;
+            }
+
+            // Для юридических запросов возвращаем структурированный ответ
+            if (responseType === 'legal_response' && typeof response === 'object') {
+                return {
+                    type: requestType,
+                    response: response.fullResponse,
+                    legalAdvice: response.legalAdvice,
+                    courtCases: response.courtCases,
+                    searchKeywords: response.searchKeywords,
+                    cached: false,
+                    source: 'ai_processing'
+                };
+            }
+
+            return {
+                type: requestType,
+                response: response,
+                cached: false,
+                source: 'ai_processing'
+            };
+
+        } catch (error) {
+            logError('Intelligent command processing failed', error);
+            throw new Error(`Failed to process command intelligently: ${error.message}`);
+        }
+    }
+
+    /**
+     * Определяет тип запроса через OpenAI API
+     * @param {string} command - Команда/запрос
+     * @returns {Promise<string>} - Тип запроса
+     */
+    async determineRequestType(command) {
+        try {
+            const systemPrompt = `You are an AI classifier that determines the type of user request.
+Analyze the user's input and classify it into one of these categories:
+
+- 'legal_request': Legal questions, law-related queries, attorney advice requests
+- 'court_case': Court case numbers, legal proceedings, judicial matters
+- 'tcc_request': Military service, TCC (Territorial Recruitment Center) related questions
+- 'motd': Message of the day requests, greetings, general chat
+- 'unknown_command': Technical commands, system help, general assistance
+
+Respond with ONLY the category name, nothing else.`;
+
+            const completion = await this.openai.chat.completions.create({
+                model: config.openai.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: systemPrompt
+                    },
+                    {
+                        role: 'user',
+                        content: command
+                    }
+                ],
+                max_tokens: 50,
+                temperature: 0.1
+            });
+
+            const response = completion.choices[0].message.content.trim().toLowerCase();
+            
+            // Нормализуем ответ
+            if (response.includes('legal') || response.includes('law')) return 'legal_request';
+            if (response.includes('court') || response.includes('case')) return 'court_case';
+            if (response.includes('tcc') || response.includes('military')) return 'tcc_request';
+            if (response.includes('motd') || response.includes('greeting')) return 'motd';
+            
+            return 'unknown_command';
+
+        } catch (error) {
+            logError('Request type determination failed', error);
+            return 'unknown_command'; // Fallback
+        }
+    }
+
+    /**
+     * Извлекает ключевые слова для поиска в базе судебных решений
+     * @param {string} query - Юридический запрос
+     * @returns {Promise<Array>} - Массив ключевых слов для поиска
+     */
+    async extractLegalSearchKeywords(query) {
+        try {
+            const systemPrompt = `You are an AI expert in legal search optimization.
+Your task is to extract 2-3 most relevant search keywords or phrases from a legal question that would be most effective for finding relevant court cases in a legal database.
+
+Focus on:
+- Legal terms and concepts
+- Specific legal actions or procedures
+- Relevant legal entities or parties
+- Key legal issues or violations
+
+Return ONLY the keywords/phrases separated by commas, nothing else.
+Example: "трудовой договор, увольнение, компенсация"`;
+
+            const completion = await this.openai.chat.completions.create({
+                model: config.openai.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: systemPrompt
+                    },
+                    {
+                        role: 'user',
+                        content: query
+                    }
+                ],
+                max_tokens: 100,
+                temperature: 0.1
+            });
+
+            const response = completion.choices[0].message.content.trim();
+            const keywords = response.split(',').map(k => k.trim()).filter(k => k.length > 0);
+            
+            // Ограничиваем до 3 ключевых слов
+            return keywords.slice(0, 3);
+
+        } catch (error) {
+            logError('Legal keyword extraction failed', error);
+            // Fallback: используем простые слова из запроса
+            return query.toLowerCase().split(/\s+/).filter(word => word.length > 3).slice(0, 3);
+        }
+    }
+
+    /**
      * Обрабатывает неизвестную команду
      * @param {string} command - Команда
      * @param {boolean} isAdmin - Является ли пользователь админом
@@ -108,7 +278,7 @@ class AIProcessor {
      */
     async processUnknownCommand(command, isAdmin = false) {
         try {
-            const cacheKey = cacheManager.createAIKey(command, 'unknown_command');
+            const cacheKey = CacheManager.createAIKey(command, 'unknown_command');
 
             return await cacheManager.getOrSet(cacheKey, async() => {
                 let systemPrompt = `You are a helpful AI assistant in a retro UNIX terminal environment. 
@@ -151,16 +321,17 @@ Keep responses concise and in the style of a 1970s computer terminal.`;
     }
 
     /**
-     * Обрабатывает юридический запрос
+     * Обрабатывает юридический запрос с поиском в базе судебных решений
      * @param {string} query - Запрос
      * @param {string} language - Язык
-     * @returns {Promise<string>} - Ответ AI
+     * @returns {Promise<Object>} - Ответ AI + результаты поиска
      */
     async processLegalRequest(query, language = 'ru') {
         try {
-            const cacheKey = cacheManager.createAIKey(query, 'legal_request');
+            const cacheKey = CacheManager.createAIKey(query, 'legal_request');
 
             return await cacheManager.getOrSet(cacheKey, async() => {
+                // 1. Генерируем юридический ответ
                 const systemPrompt = `You are a legal AI assistant. The user has asked a legal question.
 Provide accurate legal information and guidance. Always recommend consulting with a qualified attorney for specific legal advice.
 Respond in ${this._getLanguageName(language)}.
@@ -182,12 +353,72 @@ Keep responses professional and informative.`;
                     temperature: 0.3
                 });
 
-                const response = completion.choices[0].message.content;
+                const legalResponse = completion.choices[0].message.content;
+
+                // 2. Извлекаем ключевые слова для поиска
+                const searchKeywords = await this.extractLegalSearchKeywords(query);
+
+                // 3. Ищем в базе судебных решений
+                let courtCases = [];
+                if (searchKeywords.length > 0) {
+                    try {
+                        const ZakonOnlineService = require('../services/zakonOnlineService');
+                        const zakonService = new ZakonOnlineService();
+                        await zakonService.initialize();
+                        
+                        // Ищем по каждому ключевому слову
+                        for (const keyword of searchKeywords) {
+                            const searchResult = await zakonService.performFullSearch(keyword, {
+                                pageSize: 5,
+                                saveToDatabase: true
+                            });
+                            
+                            if (searchResult.success && searchResult.items.length > 0) {
+                                courtCases.push({
+                                    keyword: keyword,
+                                    cases: searchResult.items.map(item => ({
+                                        caseNumber: item.number || 'N/A',
+                                        court: item.courtName || 'N/A',
+                                        date: item.date || 'N/A',
+                                        summary: item.summary || 'N/A',
+                                        id: item.id
+                                    }))
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        logError('Error searching court cases', error);
+                        // Продолжаем без результатов поиска
+                    }
+                }
+
+                // 4. Формируем полный ответ
+                let fullResponse = legalResponse;
+                
+                if (courtCases.length > 0) {
+                    fullResponse += '\n\n📚 **Релевантные судебные дела:**\n\n';
+                    
+                    courtCases.forEach((keywordGroup, index) => {
+                        fullResponse += `🔍 **По запросу "${keywordGroup.keyword}":**\n`;
+                        keywordGroup.cases.forEach((courtCase, caseIndex) => {
+                            fullResponse += `${caseIndex + 1}. **Дело №${courtCase.caseNumber}** (${courtCase.court})\n`;
+                            fullResponse += `   📅 Дата: ${courtCase.date}\n`;
+                            fullResponse += `   📝 Краткое содержание: ${courtCase.summary}\n\n`;
+                        });
+                    });
+                    
+                    fullResponse += '💡 *Эти дела могут быть полезны для понимания практики по вашему вопросу.*';
+                }
 
                 // Сохраняем в базу данных
-                await databaseManager.saveOpenAIRequest('legal_request', query, response);
+                await databaseManager.saveOpenAIRequest('legal_request', query, fullResponse);
 
-                return response;
+                return {
+                    legalAdvice: legalResponse,
+                    courtCases: courtCases,
+                    searchKeywords: searchKeywords,
+                    fullResponse: fullResponse
+                };
             }, 1800); // 30 минут кэш
 
         } catch (error) {
@@ -203,7 +434,7 @@ Keep responses professional and informative.`;
      */
     async processCourtCaseRequest(query) {
         try {
-            const cacheKey = cacheManager.createAIKey(query, 'court_case');
+            const cacheKey = CacheManager.createAIKey(query, 'court_case');
 
             return await cacheManager.getOrSet(cacheKey, async() => {
                 const completion = await this.openai.chat.completions.create({
@@ -251,7 +482,7 @@ Keep the response informative and professional.`
      */
     async processTCCRequest(command) {
         try {
-            const cacheKey = cacheManager.createAIKey(command, 'tcc_request');
+            const cacheKey = CacheManager.createAIKey(command, 'tcc_request');
 
             return await cacheManager.getOrSet(cacheKey, async() => {
                 const completion = await this.openai.chat.completions.create({

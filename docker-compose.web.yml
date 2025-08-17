@@ -8,13 +8,16 @@ services:
     container_name: retro-terminal
     ports:
       - "3000:3000"
+    env_file:
+      - .env
+      - .env.zakon
     environment:
       - NODE_ENV=production
-      - OPENAI_API_KEY=docker-test-key
-      - DISABLE_AI=true
+      - DATABASE_PATH=/app/terminal_data.db
     volumes:
       - ./logs:/app/logs
       - ./ssl:/app/ssl
+      - ./terminal_data.db:/app/terminal_data.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
