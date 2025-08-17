@@ -6,8 +6,9 @@ services:
       context: .
       dockerfile: Dockerfile.web
     container_name: retro-terminal
-    ports:
-      - "3000:3000"
+    # Убираем прямой доступ - только через Nginx proxy
+    # ports:
+    #   - "3001:3000"
     env_file:
       - .env
       - .env.zakon
