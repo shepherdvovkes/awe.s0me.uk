@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "start:https": "node server_https.js",
+    "start:prod": "node src/server.production.js",
     "launch": "node start_server.js",
     "dev": "nodemon src/server.js",
     "dev:https": "nodemon server_https.js",

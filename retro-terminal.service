@@ -1,0 +1,45 @@
+[Unit]
+Description=Retro Terminal Production Server
+Documentation=https://awe.s0me.uk
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/awe.s0me.uk
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DOMAIN=awe.s0me.uk
+Environment=ALLOWED_ORIGINS=https://awe.s0me.uk,https://www.awe.s0me.uk
+Environment=ENABLE_CORS=true
+Environment=ENABLE_HELMET=true
+Environment=RATE_LIMIT_WINDOW=900000
+Environment=RATE_LIMIT_MAX=100
+Environment=AI_RATE_LIMIT_WINDOW=60000
+Environment=AI_RATE_LIMIT_MAX=10
+Environment=DATABASE_PATH=/var/www/awe.s0me.uk/terminal_data.db
+Environment=DB_ENABLE_WAL=true
+Environment=LOG_LEVEL=info
+Environment=LOG_ENABLE_CONSOLE=true
+Environment=LOG_ENABLE_FILE=true
+Environment=LOG_DIR=/var/www/awe.s0me.uk/logs
+Environment=CACHE_TTL=300
+Environment=CACHE_MAX_KEYS=1000
+ExecStart=/usr/bin/node /var/www/awe.s0me.uk/src/server.production.js
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=retro-terminal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/awe.s0me.uk/logs /var/www/awe.s0me.uk/terminal_data.db
+
+[Install]
+WantedBy=multi-user.target
