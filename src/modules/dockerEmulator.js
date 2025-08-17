@@ -1,182 +1,162 @@
 const { exec } = require('child_process');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
-const { logInfo, logError } = require('../utils/logger');
+const config = require('../config/app');
 
 /**
- * Docker Emulator Manager
- * Управляет эмуляторами в Docker контейнерах
+ * Manages emulators in Docker containers
  */
 class DockerEmulator {
     constructor() {
-        this.containerName = 'retro-emulator';
-        this.workspacePath = './Emulation/workspace';
-        this.outputPath = './docker/output';
+        this.workspacePath = path.join(__dirname, '../../Emulation/workspace');
     }
 
     /**
-     * Запускает ассемблер NASM в Docker
-     * @param {string} sourceCode - Исходный код
-     * @param {string} filename - Имя файла
-     * @returns {Promise<Object>} - Результат выполнения
+     * Runs NASM assembler in Docker
+     * @param {string} sourceCode - Source code
+     * @param {Object} options - Compilation options
+     * @returns {Promise<Object>} - Execution result
      */
-    async runAssembler(sourceCode, filename) {
+    async runAssembler(sourceCode, options = {}) {
         try {
-            // Сохраняем исходный код в файл
-            const filePath = path.join(this.workspacePath, 'asm', filename);
-            fs.writeFileSync(filePath, sourceCode, 'utf8');
-
-            // Запускаем компиляцию в Docker
-            const command = `docker exec ${this.containerName} /usr/local/bin/run-assembler.sh ${filename}`;
+            // Save source code to file
+            const fileName = options.fileName || 'program.asm';
+            const filePath = path.join(this.workspacePath, 'asm', fileName);
+            
+            // Run compilation in Docker
+            const command = `docker run --rm -v "${this.workspacePath}:/workspace" nasm:latest bash -c "cd /workspace/asm && nasm -f elf64 ${fileName} -o ${fileName.replace('.asm', '.o')} && ld ${fileName.replace('.asm', '.o')} -o ${fileName.replace('.asm', '')} && ./${fileName.replace('.asm', '')}"`;
             
             const result = await this.executeCommand(command);
             
             return {
                 success: true,
                 output: result,
-                filename: filename,
-                type: 'assembler'
+                fileName: fileName
             };
-
         } catch (error) {
-            logError('Docker assembler execution failed', error);
             return {
                 success: false,
                 error: error.message,
-                type: 'assembler'
+                output: error.stdout || error.stderr || ''
             };
         }
     }
 
     /**
-     * Запускает Free Pascal Compiler в Docker
-     * @param {string} sourceCode - Исходный код
-     * @param {string} filename - Имя файла
-     * @returns {Promise<Object>} - Результат выполнения
+     * Runs Free Pascal Compiler in Docker
+     * @param {string} sourceCode - Source code
+     * @param {Object} options - Compilation options
+     * @returns {Promise<Object>} - Execution result
      */
-    async runPascal(sourceCode, filename) {
+    async runPascal(sourceCode, options = {}) {
         try {
-            // Сохраняем исходный код в файл
-            const filePath = path.join(this.workspacePath, 'pascal', filename);
-            fs.writeFileSync(filePath, sourceCode, 'utf8');
-
-            // Запускаем компиляцию в Docker
-            const command = `docker exec ${this.containerName} /usr/local/bin/run-pascal.sh ${filename}`;
+            // Save source code to file
+            const fileName = options.fileName || 'program.pas';
+            const filePath = path.join(this.workspacePath, 'pascal', fileName);
+            
+            // Run compilation in Docker
+            const command = `docker run --rm -v "${this.workspacePath}:/workspace" fpc:latest bash -c "cd /workspace/pascal && fpc ${fileName} && ./${fileName.replace('.pas', '')}"`;
             
             const result = await this.executeCommand(command);
             
             return {
                 success: true,
                 output: result,
-                filename: filename,
-                type: 'pascal'
+                fileName: fileName
             };
-
         } catch (error) {
-            logError('Docker Pascal execution failed', error);
             return {
                 success: false,
                 error: error.message,
-                type: 'pascal'
+                output: error.stdout || error.stderr || ''
             };
         }
     }
 
     /**
-     * Запускает DOS программу через DOSBox
-     * @param {string} programName - Имя программы
-     * @returns {Promise<Object>} - Результат выполнения
+     * Runs DOS program through DOSBox
+     * @param {string} programName - Program name
+     * @param {Object} options - Execution options
+     * @returns {Promise<Object>} - Execution result
      */
-    async runDOSProgram(programName) {
+    async runDOS(programName, options = {}) {
         try {
-            const command = `docker exec dosbox-emulator /usr/local/bin/run-dosbox.sh ${programName}`;
+            const command = `docker run --rm -v "${this.workspacePath}:/workspace" dosbox:latest bash -c "cd /workspace/dos && dosbox -c 'mount c /workspace/dos' -c 'c:' -c '${programName}' -c 'exit'"`;
             
             const result = await this.executeCommand(command);
             
             return {
                 success: true,
                 output: result,
-                program: programName,
-                type: 'dos'
+                programName: programName
             };
-
         } catch (error) {
-            logError('Docker DOS execution failed', error);
             return {
                 success: false,
                 error: error.message,
-                type: 'dos'
+                output: error.stdout || error.stderr || ''
             };
         }
     }
 
     /**
-     * Запускает QEMU эмуляцию
-     * @param {string} isoFile - ISO файл
-     * @param {number} memory - Размер памяти в MB
-     * @returns {Promise<Object>} - Результат выполнения
+     * Runs QEMU emulation
+     * @param {string} imagePath - Path to disk image
+     * @param {Object} options - Emulation options
+     * @returns {Promise<Object>} - Execution result
      */
-    async runQEMU(isoFile = 'freedos.iso', memory = 128) {
+    async runQEMU(imagePath, options = {}) {
         try {
-            const command = `docker exec qemu-emulator /usr/local/bin/run-qemu.sh ${isoFile} ${memory}`;
+            const command = `docker run --rm -v "${this.workspacePath}:/workspace" qemu:latest qemu-system-x86_64 -hda /workspace/${imagePath} -m 512 -display sdl`;
             
             const result = await this.executeCommand(command);
             
             return {
                 success: true,
                 output: result,
-                iso: isoFile,
-                memory: memory,
-                type: 'qemu'
+                imagePath: imagePath
             };
-
         } catch (error) {
-            logError('Docker QEMU execution failed', error);
             return {
                 success: false,
                 error: error.message,
-                type: 'qemu'
+                output: error.stdout || error.stderr || ''
             };
         }
     }
 
     /**
-     * Получает список доступных файлов в workspace
-     * @param {string} type - Тип файлов (asm, pascal, dos)
-     * @returns {Promise<Array>} - Список файлов
+     * Gets list of available files in workspace
+     * @param {string} subdirectory - Subdirectory to list
+     * @returns {Promise<Array>} - List of files
      */
-    async listFiles(type = 'asm') {
+    async getFiles(subdirectory = '') {
         try {
-            const command = `docker exec ${this.containerName} ls -la /workspace/${type}/`;
-            const result = await this.executeCommand(command);
+            const targetPath = path.join(this.workspacePath, subdirectory);
+            const files = await fs.readdir(targetPath);
             
             return {
                 success: true,
-                files: result,
-                type: type
+                files: files,
+                path: targetPath
             };
-
         } catch (error) {
-            logError('Docker list files failed', error);
             return {
                 success: false,
-                error: error.message,
-                type: type
+                error: error.message
             };
         }
     }
 
     /**
-     * Создает образец программы
-     * @param {string} type - Тип программы (asm, pascal)
-     * @param {string} name - Имя программы
-     * @returns {Promise<Object>} - Результат создания
+     * Creates sample program
+     * @param {string} type - Program type (asm, pascal, dos)
+     * @param {Object} options - Creation options
+     * @returns {Promise<Object>} - Creation result
      */
-    async createSample(type, name) {
-        try {
-            const samples = {
-                asm: {
-                    'hello.asm': `; Hello World программа для NASM
+    async createSample(type, options = {}) {
+        const samples = {
+            'hello.asm': `; Hello World program for NASM
 section .data
     message db 'Hello, World!', 0xa
     message_length equ $ - message
@@ -185,45 +165,42 @@ section .text
     global _start
 
 _start:
-    ; Вывод сообщения
+    ; Print message
     mov eax, 4          ; sys_write
     mov ebx, 1          ; stdout
-    mov ecx, message    ; сообщение
-    mov edx, message_length ; длина
+    mov ecx, message    ; message
+    mov edx, message_length ; length
     int 0x80
 
-    ; Выход
+    ; Exit
     mov eax, 1          ; sys_exit
-    mov ebx, 0          ; код выхода 0
-    int 0x80`
-                },
-
-                pascal: {
-                    'hello.pas': `program HelloWorld;
+    mov ebx, 0          ; exit code 0
+    int 0x80`,
+            
+            'hello.pas': `program HelloWorld;
 begin
     writeln('Hello, World!');
     writeln('Welcome to Free Pascal!');
-end.`
-                }
-            };
+end.`,
+            
+            'hello.bat': `@echo off
+echo Hello, World!
+echo Welcome to DOS!
+pause`
+        };
 
-            if (!samples[type] || !samples[type][name]) {
-                throw new Error(`Неизвестный тип или имя: ${type}/${name}`);
-            }
-
-            const sourceCode = samples[type][name];
-            const filePath = path.join(this.workspacePath, type, name);
-            fs.writeFileSync(filePath, sourceCode, 'utf8');
-
+        try {
+            const fileName = options.fileName || `hello.${type}`;
+            const filePath = path.join(this.workspacePath, type === 'asm' ? 'asm' : type === 'pascal' ? 'pascal' : 'dos', fileName);
+            
+            await fs.writeFile(filePath, samples[fileName] || '');
+            
             return {
                 success: true,
-                message: `Образец ${name} создан в /workspace/${type}/`,
-                filename: name,
-                type: type
+                fileName: fileName,
+                content: samples[fileName]
             };
-
         } catch (error) {
-            logError('Docker create sample failed', error);
             return {
                 success: false,
                 error: error.message
@@ -232,8 +209,8 @@ end.`
     }
 
     /**
-     * Проверяет статус Docker контейнеров
-     * @returns {Promise<Object>} - Статус контейнеров
+     * Checks Docker container status
+     * @returns {Promise<Object>} - Container status
      */
     async getStatus() {
         try {
@@ -242,11 +219,10 @@ end.`
             
             return {
                 success: true,
-                status: result
+                status: result,
+                containers: result.split('\n').filter(line => line.trim())
             };
-
         } catch (error) {
-            logError('Docker status check failed', error);
             return {
                 success: false,
                 error: error.message
@@ -255,24 +231,20 @@ end.`
     }
 
     /**
-     * Запускает Docker контейнеры
-     * @returns {Promise<Object>} - Результат запуска
+     * Starts Docker containers
+     * @returns {Promise<Object>} - Start result
      */
     async startContainers() {
         try {
             const command = 'docker-compose up -d';
             const result = await this.executeCommand(command);
             
-            logInfo('Docker containers started', { result });
-            
             return {
                 success: true,
-                message: 'Контейнеры запущены',
+                message: 'Containers started',
                 output: result
             };
-
         } catch (error) {
-            logError('Docker containers start failed', error);
             return {
                 success: false,
                 error: error.message
@@ -281,24 +253,20 @@ end.`
     }
 
     /**
-     * Останавливает Docker контейнеры
-     * @returns {Promise<Object>} - Результат остановки
+     * Stops Docker containers
+     * @returns {Promise<Object>} - Stop result
      */
     async stopContainers() {
         try {
             const command = 'docker-compose down';
             const result = await this.executeCommand(command);
             
-            logInfo('Docker containers stopped', { result });
-            
             return {
                 success: true,
-                message: 'Контейнеры остановлены',
+                message: 'Containers stopped',
                 output: result
             };
-
         } catch (error) {
-            logError('Docker containers stop failed', error);
             return {
                 success: false,
                 error: error.message
@@ -307,17 +275,17 @@ end.`
     }
 
     /**
-     * Выполняет команду в системе
-     * @param {string} command - Команда для выполнения
-     * @returns {Promise<string>} - Результат выполнения
+     * Executes command in system
+     * @param {string} command - Command to execute
+     * @returns {Promise<string>} - Execution result
      */
-    executeCommand(command) {
+    async executeCommand(command) {
         return new Promise((resolve, reject) => {
             exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
                 if (error) {
-                    reject(new Error(`Command failed: ${error.message}`));
+                    reject({ error, stdout, stderr });
                 } else {
-                    resolve(stdout || stderr || '');
+                    resolve(stdout);
                 }
             });
         });

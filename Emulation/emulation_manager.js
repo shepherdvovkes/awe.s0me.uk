@@ -2,6 +2,7 @@ const AssemblerEmulator = require('./assembler');
 const TurboPascalEmulator = require('./turbopascal');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 class EmulationManager {
     constructor() {
@@ -10,6 +11,7 @@ class EmulationManager {
         this.currentEmulator = null;
         this.currentFile = null;
         this.workspace = './Emulation/workspace';
+        this.dockerContainer = 'retro-emulator';
         this.ensureWorkspace();
     }
 
@@ -18,6 +20,580 @@ class EmulationManager {
         if (!fs.existsSync(this.workspace)) {
             fs.mkdirSync(this.workspace, { recursive: true });
         }
+    }
+
+    // Initialize Docker emulator
+    async initializeDockerEmulator(type) {
+        try {
+            // Start Docker container if not running
+            await this.startDockerContainer();
+            
+            switch (type.toLowerCase()) {
+                case 'asm':
+                case 'assembler':
+                case 'x86':
+                    this.currentEmulator = this.assembler;
+                    return {
+                        success: true,
+                        message: 'Turbo Assembler 3.0 initialized in Docker container',
+                        header: this.formatCRTOutput(this.assembler.displayHeader())
+                    };
+                
+                case 'pascal':
+                case 'turbopascal':
+                case 'tp':
+                    this.currentEmulator = this.turbopascal;
+                    return {
+                        success: true,
+                        message: 'Turbo Pascal 7.0 initialized in Docker container',
+                        header: this.formatCRTOutput(this.turbopascal.displayHeader())
+                    };
+                
+                default:
+                    return {
+                        success: false,
+                        message: `Unknown emulator type: ${type}. Supported types: asm, pascal`
+                    };
+            }
+        } catch (error) {
+            return {
+                success: false,
+                message: `Failed to initialize Docker emulator: ${error.message}`
+            };
+        }
+    }
+
+    // Start Docker container
+    async startDockerContainer() {
+        return new Promise((resolve, reject) => {
+            exec(`docker start ${this.dockerContainer}`, (error, stdout, stderr) => {
+                if (error && !error.message.includes('already started')) {
+                    // Try to run container if it doesn't exist
+                    exec(`docker-compose up -d retro-emulator`, (error2, stdout2, stderr2) => {
+                        if (error2) {
+                            reject(new Error(`Failed to start Docker container: ${error2.message}`));
+                        } else {
+                            resolve(stdout2);
+                        }
+                    });
+                } else {
+                    resolve(stdout);
+                }
+            });
+        });
+    }
+
+    // Load file from Docker container
+    async loadDockerFile(filename) {
+        if (!this.currentEmulator) {
+            return {
+                success: false,
+                message: 'No emulator initialized. Use "run asm" or "run pascal" first.'
+            };
+        }
+
+        const filePath = path.join(this.workspace, filename);
+        
+        try {
+            if (!fs.existsSync(filePath)) {
+                return {
+                    success: false,
+                    message: `File not found: ${filename}`
+                };
+            }
+
+            const sourceCode = fs.readFileSync(filePath, 'utf8');
+            this.currentFile = filename;
+            
+            return {
+                success: true,
+                message: `File loaded: ${filename}`,
+                sourceCode: sourceCode,
+                lines: sourceCode.split('\n').length
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Error loading file: ${error.message}`
+            };
+        }
+    }
+
+    // Compile in Docker container
+    async compileDocker(sourceCode, type) {
+        if (!this.currentEmulator) {
+            return {
+                success: false,
+                display: 'No emulator initialized. Use "run asm" or "run pascal" first.'
+            };
+        }
+
+        try {
+            let result;
+            if (type === 'asm') {
+                result = await this.executeDockerCommand(`/usr/local/bin/run-assembler.sh ${this.currentFile}`);
+            } else if (type === 'pascal') {
+                result = await this.executeDockerCommand(`/usr/local/bin/run-pascal.sh ${this.currentFile}`);
+            } else {
+                return {
+                    success: false,
+                    display: `Unknown compilation type: ${type}`
+                };
+            }
+
+            return {
+                success: true,
+                display: this.formatCRTOutput(result)
+            };
+        } catch (error) {
+            return {
+                success: false,
+                display: this.formatCRTOutput(`Compilation error: ${error.message}`)
+            };
+        }
+    }
+
+    // Execute in Docker container
+    async executeDocker(type) {
+        if (!this.currentEmulator) {
+            return {
+                success: false,
+                display: 'No emulator initialized. Use "run asm" or "run pascal" first.'
+            };
+        }
+
+        try {
+            let result;
+            if (type === 'asm') {
+                result = await this.executeDockerCommand(`cd /workspace/output && ./${this.currentFile.replace('.asm', '')}`);
+            } else if (type === 'pascal') {
+                result = await this.executeDockerCommand(`cd /workspace/output && ./${this.currentFile.replace('.pas', '')}`);
+            } else {
+                return {
+                    success: false,
+                    display: `Unknown execution type: ${type}`
+                };
+            }
+
+            return {
+                success: true,
+                display: this.formatCRTOutput(result)
+            };
+        } catch (error) {
+            return {
+                success: false,
+                display: this.formatCRTOutput(`Execution error: ${error.message}`)
+            };
+        }
+    }
+
+    // Execute command in Docker container
+    async executeDockerCommand(command) {
+        return new Promise((resolve, reject) => {
+            exec(`docker exec ${this.dockerContainer} ${command}`, (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Docker command failed: ${error.message}`));
+                } else {
+                    resolve(stdout || stderr || '');
+                }
+            });
+        });
+    }
+
+    // Create sample program
+    createSample(emulatorType, programType) {
+        const samples = {
+            asm: {
+                'hello': `.model small
+.stack 100h
+.data
+    message db 'Hello, World!', 0dh, 0ah, '$'
+.code
+    mov ax, @data
+    mov ds, ax
+    
+    ; Вывод сообщения
+    mov ah, 09h
+    mov dx, offset message
+    int 21h
+    
+    ; Выход
+    mov ah, 4ch
+    int 21h
+end`,
+                'add': `.model small
+.stack 100h
+.data
+    msg1 db 'Enter first number: ', 0dh, 0ah, '$'
+    msg2 db 'Enter second number: ', 0dh, 0ah, '$'
+    msg3 db 'Sum is: ', 0dh, 0ah, '$'
+.code
+    mov ax, @data
+    mov ds, ax
+    
+    ; Вывод первого сообщения
+    mov ah, 09h
+    mov dx, offset msg1
+    int 21h
+    
+    ; Выход
+    mov ah, 4ch
+    int 21h
+end`,
+                'factorial': `.model small
+.stack 100h
+.data
+    msg db 'Factorial of 5 is: ', 0dh, 0ah, '$'
+.code
+    mov ax, @data
+    mov ds, ax
+    
+    ; Простой факториал 5
+    mov ax, 1
+    mov cx, 5
+
+factorial_loop:
+    mul cx
+    dec cx
+    jnz factorial_loop
+    
+    ; Выход
+    mov ah, 4ch
+    int 21h
+end`
+            },
+            pascal: {
+                'hello': `program HelloWorld;
+begin
+    writeln('Hello, World!');
+    writeln('Welcome to Free Pascal!');
+end.`,
+                'calculator': `program Calculator;
+var
+    a, b: integer;
+    choice: char;
+begin
+    writeln('Simple Calculator');
+    writeln('Enter first number: ');
+    readln(a);
+    writeln('Enter second number: ');
+    readln(b);
+    writeln('Choose operation (+, -, *, /): ');
+    readln(choice);
+    
+    case choice of
+        '+': writeln('Result: ', a + b);
+        '-': writeln('Result: ', a - b);
+        '*': writeln('Result: ', a * b);
+        '/': if b <> 0 then writeln('Result: ', a / b) else writeln('Division by zero!');
+    else
+        writeln('Invalid operation');
+    end;
+end.`,
+                'factorial': `program Factorial;
+var
+    n, i, fact: integer;
+begin
+    writeln('Enter a number: ');
+    readln(n);
+    fact := 1;
+    
+    for i := 1 to n do
+        fact := fact * i;
+    
+    writeln('Factorial of ', n, ' is ', fact);
+end.`
+            }
+        };
+
+        if (!samples[emulatorType] || !samples[emulatorType][programType]) {
+            return {
+                success: false,
+                message: `Unknown sample type: ${emulatorType}/${programType}`
+            };
+        }
+
+        const sourceCode = samples[emulatorType][programType];
+        const filename = emulatorType === 'asm' ? `${programType}.asm` : `${programType}.pas`;
+        const filePath = path.join(this.workspace, filename);
+        fs.writeFileSync(filePath, sourceCode, 'utf8');
+
+        return {
+            success: true,
+            message: `Sample program created`,
+            sourceCode: sourceCode
+        };
+    }
+
+    // Create Docker sample
+    async createDockerSample(emulatorType, programType) {
+        const samples = {
+            asm: {
+                'hello.asm': `; Hello World программа для NASM
+section .data
+    message db 'Hello, World!', 0xa
+    message_length equ $ - message
+
+section .text
+    global _start
+
+_start:
+    ; Вывод сообщения
+    mov eax, 4          ; sys_write
+    mov ebx, 1          ; stdout
+    mov ecx, message    ; сообщение
+    mov edx, message_length ; длина
+    int 0x80
+
+    ; Выход
+    mov eax, 1          ; sys_exit
+    mov ebx, 0          ; код выхода 0
+    int 0x80`,
+                'add.asm': `; Программа сложения двух чисел
+section .data
+    msg1 db 'Enter first number: ', 0xa
+    len1 equ $ - msg1
+    msg2 db 'Enter second number: ', 0xa
+    len2 equ $ - msg2
+    msg3 db 'Sum is: ', 0xa
+    len3 equ $ - msg3
+
+section .bss
+    num1 resb 2
+    num2 resb 2
+    sum resb 2
+
+section .text
+    global _start
+
+_start:
+    ; Вывод первого сообщения
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, msg1
+    mov edx, len1
+    int 0x80
+
+    ; Выход
+    mov eax, 1
+    mov ebx, 0
+    int 0x80`,
+                'factorial.asm': `; Программа вычисления факториала
+section .data
+    msg db 'Factorial of 5 is: ', 0xa
+    len equ $ - msg
+
+section .text
+    global _start
+
+_start:
+    ; Простой факториал 5
+    mov eax, 1
+    mov ecx, 5
+
+factorial_loop:
+    mul ecx
+    dec ecx
+    jnz factorial_loop
+
+    ; Выход
+    mov eax, 1
+    mov ebx, 0
+    int 0x80`
+            },
+            pascal: {
+                'hello.pas': `program HelloWorld;
+begin
+    writeln('Hello, World!');
+    writeln('Welcome to Free Pascal!');
+end.`,
+                'calculator.pas': `program Calculator;
+var
+    a, b: integer;
+    choice: char;
+begin
+    writeln('Simple Calculator');
+    writeln('Enter first number: ');
+    readln(a);
+    writeln('Enter second number: ');
+    readln(b);
+    writeln('Choose operation (+, -, *, /): ');
+    readln(choice);
+    
+    case choice of
+        '+': writeln('Result: ', a + b);
+        '-': writeln('Result: ', a - b);
+        '*': writeln('Result: ', a * b);
+        '/': if b <> 0 then writeln('Result: ', a / b) else writeln('Division by zero!');
+    else
+        writeln('Invalid operation');
+    end;
+end.`,
+                'factorial.pas': `program Factorial;
+var
+    n, i, fact: integer;
+begin
+    writeln('Enter a number: ');
+    readln(n);
+    fact := 1;
+    
+    for i := 1 to n do
+        fact := fact * i;
+    
+    writeln('Factorial of ', n, ' is ', fact);
+end.`
+            }
+        };
+
+        if (!samples[emulatorType] || !samples[emulatorType][programType]) {
+            return {
+                success: false,
+                message: `Unknown sample type: ${emulatorType}/${programType}`
+            };
+        }
+
+        const sourceCode = samples[emulatorType][programType];
+        const filePath = path.join(this.workspace, programType);
+        fs.writeFileSync(filePath, sourceCode, 'utf8');
+
+        return {
+            success: true,
+            message: `Sample ${programType} created in workspace`,
+            sourceCode: sourceCode
+        };
+    }
+
+    // Execute DOS command
+    async executeDOSCommand(command) {
+        return new Promise((resolve, reject) => {
+            const dosCommand = `docker exec dosbox-emulator dosbox -c "${command}"`;
+            
+            exec(dosCommand, (error, stdout, stderr) => {
+                if (error) {
+                    resolve({
+                        success: false,
+                        display: this.formatCRTOutput(`DOS Command failed: ${error.message}`)
+                    });
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`DOS Command: ${command}\nOutput:\n${stdout || stderr || ''}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Execute QEMU command
+    async executeQEMUCommand(command) {
+        return new Promise((resolve, reject) => {
+            const qemuCommand = `docker exec qemu-emulator qemu-system-x86_64 -h`;
+            
+            exec(qemuCommand, (error, stdout, stderr) => {
+                if (error) {
+                    resolve({
+                        success: false,
+                        display: this.formatCRTOutput(`QEMU Command failed: ${error.message}`)
+                    });
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`QEMU Command: ${command}\nOutput:\n${stdout || stderr || ''}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Execute SSH command
+    executeSSHCommand(command) {
+        return new Promise((resolve, reject) => {
+            const sshCommand = `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost -p 2222 "${command}"`;
+            
+            exec(sshCommand, (error, stdout, stderr) => {
+                if (error) {
+                    resolve({
+                        success: false,
+                        display: this.formatCRTOutput(`SSH Command failed: ${error.message}`)
+                    });
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`SSH Command: ${command}\nOutput:\n${stdout || stderr || ''}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Get Docker container status
+    async getDockerStatus() {
+        return new Promise((resolve, reject) => {
+            exec('docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"', (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Failed to get Docker status: ${error.message}`));
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`Docker Containers Status:\n${stdout}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Start all Docker containers
+    async startAllContainers() {
+        return new Promise((resolve, reject) => {
+            exec('docker-compose up -d', (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Failed to start containers: ${error.message}`));
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`All containers started successfully:\n${stdout}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Stop all Docker containers
+    async stopAllContainers() {
+        return new Promise((resolve, reject) => {
+            exec('docker-compose down', (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Failed to stop containers: ${error.message}`));
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`All containers stopped successfully:\n${stdout}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Get container logs
+    async getContainerLogs(containerName = 'retro-emulator') {
+        return new Promise((resolve, reject) => {
+            exec(`docker logs ${containerName} --tail 50`, (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(`Failed to get logs: ${error.message}`));
+                } else {
+                    resolve({
+                        success: true,
+                        display: this.formatCRTOutput(`Container logs for ${containerName}:\n${stdout}`)
+                    });
+                }
+            });
+        });
+    }
+
+    // Format output in CRT monitor style
+    formatCRTOutput(text) {
+        const timestamp = new Date().toLocaleTimeString();
+        return `[${timestamp}] ${text}\n> `;
     }
 
     // Initialize emulator based on type
@@ -207,127 +783,6 @@ class EmulationManager {
                 success: false,
                 message: `Error listing files: ${error.message}`
             };
-        }
-    }
-
-    // Create sample programs
-    createSample(emulatorType, programType) {
-        let sourceCode = '';
-        let filename = '';
-
-        if (emulatorType === 'asm') {
-            switch (programType) {
-                case 'hello':
-                    filename = 'hello.asm';
-                    sourceCode = [
-                        '.model small',
-                        '.stack 100h',
-                        '.data',
-                        '    message db "Hello, World!$"',
-                        '.code',
-                        'start:',
-                        '    mov ah, 09h',
-                        '    mov dx, offset message',
-                        '    int 21h',
-                        '    mov ah, 4Ch',
-                        '    int 21h',
-                        'end start'
-                    ].join('\n');
-                    break;
-                
-                case 'add':
-                    filename = 'add.asm';
-                    sourceCode = [
-                        '.model small',
-                        '.stack 100h',
-                        '.data',
-                        '    num1 db 5',
-                        '    num2 db 3',
-                        '    result db ?',
-                        '.code',
-                        'start:',
-                        '    mov al, num1',
-                        '    add al, num2',
-                        '    mov result, al',
-                        '    mov ah, 4Ch',
-                        '    int 21h',
-                        'end start'
-                    ].join('\n');
-                    break;
-                
-                default:
-                    return {
-                        success: false,
-                        message: `Unknown sample type: ${programType}. Available: hello, add`
-                    };
-            }
-        } else if (emulatorType === 'pascal') {
-            switch (programType) {
-                case 'hello':
-                    filename = 'hello.pas';
-                    sourceCode = [
-                        'program Hello;',
-                        'begin',
-                        '    writeln("Hello, World!");',
-                        'end.'
-                    ].join('\n');
-                    break;
-                
-                case 'factorial':
-                    filename = 'factorial.pas';
-                    sourceCode = [
-                        'program Factorial;',
-                        'var',
-                        '    n, i, fact: integer;',
-                        'begin',
-                        '    n := 5;',
-                        '    fact := 1;',
-                        '    for i := 1 to n do',
-                        '        fact := fact * i;',
-                        '    writeln("Factorial of ", n, " is ", fact);',
-                        'end.'
-                    ].join('\n');
-                    break;
-                
-                case 'calculator':
-                    filename = 'calculator.pas';
-                    sourceCode = [
-                        'program Calculator;',
-                        'var',
-                        '    a, b, sum: integer;',
-                        'begin',
-                        '    a := 10;',
-                        '    b := 20;',
-                        '    sum := a + b;',
-                        '    writeln(a, " + ", b, " = ", sum);',
-                        'end.'
-                    ].join('\n');
-                    break;
-                
-                default:
-                    return {
-                        success: false,
-                        message: `Unknown sample type: ${programType}. Available: hello, factorial, calculator`
-                    };
-            }
-        } else {
-            return {
-                success: false,
-                message: `Unknown emulator type: ${emulatorType}`
-            };
-        }
-
-        const saveResult = this.saveFile(filename, sourceCode);
-        
-        if (saveResult.success) {
-            return {
-                success: true,
-                message: `Sample program created: ${filename}`,
-                filename: filename,
-                sourceCode: sourceCode
-            };
-        } else {
-            return saveResult;
         }
     }
 

@@ -1,32 +1,56 @@
-const AIProcessor = require('../modules/aiProcessor');
-const databaseManager = require('../modules/database');
 const OutputFormatter = require('../utils/formatters');
 const { logInfo, logError } = require('../utils/logger');
 const config = require('../config/app');
 
 /**
- * AI service for handling AI-related operations
+ * AI service for handling AI-related operations with dependency injection and strategy pattern
  */
 class AIService {
+    /**
+     * Конструктор с внедрением зависимостей
+     * @param {Object} motdProcessor - Процессор MOTD
+     * @param {Object} legalProcessor - Процессор юридических запросов
+     * @param {Object} commandProcessor - Процессор команд
+     * @param {Object} motdRepository - Репозиторий MOTD
+     * @param {Object} openaiRequestRepository - Репозиторий OpenAI запросов
+     * @param {Object} cacheManager - Менеджер кэша
+     * @param {Object} aiRequestContext - Контекст стратегий
+     */
+    constructor(motdProcessor, legalProcessor, commandProcessor, motdRepository, openaiRequestRepository, cacheManager, aiRequestContext) {
+        this.motdProcessor = motdProcessor;
+        this.legalProcessor = legalProcessor;
+        this.commandProcessor = commandProcessor;
+        this.motdRepository = motdRepository;
+        this.openaiRequestRepository = openaiRequestRepository;
+        this.cacheManager = cacheManager;
+        this.aiRequestContext = aiRequestContext;
+    }
+
     /**
      * Generates MOTD with multilingual support
      * @returns {Promise<Object>} - MOTD result
      */
-    static async generateMOTD() {
+    async generateMOTD() {
         try {
-            const aiProcessor = new AIProcessor();
-
             // Check OpenAI availability
-            if (!await aiProcessor.isOpenAIAvailable()) {
+            if (!await this.motdProcessor.isAvailable()) {
                 throw new Error('AI service is currently unavailable');
             }
 
             // Get previous MOTDs to avoid repetition
-            const previousMotds = await databaseManager.getMOTDHistory(5);
-            const previousMessages = previousMotds.map(item => item.message);
+            const previousMessages = await this.motdRepository.getRecentMOTDs(5);
 
             // Generate multilingual MOTD with previous messages to avoid repetition
-            const multilingualMotds = await aiProcessor.generateMultilingualMOTD(previousMessages);
+            const multilingualMotds = await this.motdProcessor.generateMultilingualMOTD(previousMessages);
+
+            // Save MOTDs to database
+            for (const motd of multilingualMotds) {
+                await this.motdRepository.save({
+                    message: motd.message,
+                    prompt: motd.prompt,
+                    language: motd.code
+                });
+            }
 
             // Format output
             const formattedOutput = OutputFormatter.formatMOTD(multilingualMotds);
@@ -45,25 +69,30 @@ class AIService {
     }
 
     /**
-     * Processes unknown command
+     * Processes unknown command using strategy pattern
      * @param {string} command - Command to process
      * @param {boolean} isAdmin - Whether user is admin
      * @returns {Promise<Object>} - Processing result
      */
-    static async processUnknownCommand(command, isAdmin = false) {
+    async processUnknownCommand(command, isAdmin = false) {
         try {
-            const aiProcessor = new AIProcessor();
-
             // Check OpenAI availability
-            if (!await aiProcessor.isOpenAIAvailable()) {
+            if (!await this.commandProcessor.isAvailable()) {
                 throw new Error('AI service is currently unavailable');
             }
 
-            const response = await aiProcessor.processUnknownCommand(command, isAdmin);
+            const result = await this.aiRequestContext.processRequest('command', command, { isAdmin });
+
+            // Save to database
+            await this.openaiRequestRepository.save({
+                requestType: 'unknown_command',
+                prompt: command,
+                response: result.response
+            });
 
             return {
                 success: true,
-                output: response,
+                output: result.response,
                 cached: false,
                 timestamp: new Date().toISOString()
             };
@@ -82,7 +111,7 @@ class AIService {
      * @param {string} query - Query to analyze
      * @returns {Promise<Object>} - Detection result
      */
-    static async detectLegalRequest(query) {
+    async detectLegalRequest(query) {
         try {
             // Simple legal request detection
             const legalKeywords = [
@@ -112,25 +141,30 @@ class AIService {
     }
 
     /**
-     * Searches legal database
+     * Searches legal database using strategy pattern
      * @param {string} query - Legal query
      * @param {string} language - Language
      * @returns {Promise<Object>} - Search result
      */
-    static async searchLegalDatabase(query, language = 'ru') {
+    async searchLegalDatabase(query, language = 'ru') {
         try {
-            const aiProcessor = new AIProcessor();
-
             // Check OpenAI availability
-            if (!await aiProcessor.isOpenAIAvailable()) {
+            if (!await this.legalProcessor.isAvailable()) {
                 throw new Error('AI service is currently unavailable');
             }
 
-            const response = await aiProcessor.processLegalRequest(query, language);
+            const result = await this.aiRequestContext.processRequest('legal', query, { language });
+
+            // Save to database
+            await this.openaiRequestRepository.save({
+                requestType: 'legal_request',
+                prompt: query,
+                response: result.response
+            });
 
             return {
                 success: true,
-                output: response,
+                output: result.response,
                 cached: false,
                 timestamp: new Date().toISOString()
             };
@@ -145,24 +179,30 @@ class AIService {
     }
 
     /**
-     * Processes court case requests
+     * Processes court case requests using strategy pattern
      * @param {string} query - Court case query
      * @returns {Promise<Object>} - Processing result
      */
-    static async processCourtCaseRequest(query) {
+    async processCourtCaseRequest(query) {
         try {
-            const aiProcessor = new AIProcessor();
-
             // Check OpenAI availability
-            if (!await aiProcessor.isOpenAIAvailable()) {
+            if (!await this.legalProcessor.isAvailable()) {
                 throw new Error('AI service is currently unavailable');
             }
 
-            const response = await aiProcessor.processCourtCaseRequest(query);
+            const legalStrategy = this.aiRequestContext.getLegalStrategy();
+            const result = await legalStrategy.processCourtCaseRequest(query);
+
+            // Save to database
+            await this.openaiRequestRepository.save({
+                requestType: 'court_case_numbers_request',
+                prompt: query,
+                response: result.response
+            });
 
             return {
                 success: true,
-                output: response,
+                output: result.response,
                 cached: false,
                 timestamp: new Date().toISOString()
             };
@@ -176,24 +216,30 @@ class AIService {
     }
 
     /**
-     * Processes TCC requests
+     * Processes TCC requests using strategy pattern
      * @param {string} command - TCC command
      * @returns {Promise<Object>} - Processing result
      */
-    static async processTCCRequest(command) {
+    async processTCCRequest(command) {
         try {
-            const aiProcessor = new AIProcessor();
-
             // Check OpenAI availability
-            if (!await aiProcessor.isOpenAIAvailable()) {
+            if (!await this.legalProcessor.isAvailable()) {
                 throw new Error('AI service is currently unavailable');
             }
 
-            const response = await aiProcessor.processTCCRequest(command);
+            const legalStrategy = this.aiRequestContext.getLegalStrategy();
+            const result = await legalStrategy.processTCCRequest(command);
+
+            // Save to database
+            await this.openaiRequestRepository.save({
+                requestType: 'tcc_request',
+                prompt: command,
+                response: result.response
+            });
 
             return {
                 success: true,
-                output: response,
+                output: result.response,
                 cached: false,
                 timestamp: new Date().toISOString()
             };
@@ -211,9 +257,9 @@ class AIService {
      * @param {number} limit - Number of records to return
      * @returns {Promise<Object>} - MOTD history
      */
-    static async getMOTDHistory(limit = 20) {
+    async getMOTDHistory(limit = 20) {
         try {
-            const history = await databaseManager.getMOTDHistory(parseInt(limit));
+            const history = await this.motdRepository.getAll({ limit });
 
             return {
                 success: true,
@@ -233,9 +279,9 @@ class AIService {
      * @param {number} limit - Number of records to return
      * @returns {Promise<Object>} - OpenAI history
      */
-    static async getOpenAIHistory(limit = 20) {
+    async getOpenAIHistory(limit = 20) {
         try {
-            const history = await databaseManager.getOpenAIHistory(parseInt(limit));
+            const history = await this.openaiRequestRepository.getAll({ limit });
 
             return {
                 success: true,
@@ -253,17 +299,17 @@ class AIService {
      * Gets AI service status
      * @returns {Promise<Object>} - Service status
      */
-    static async getServiceStatus() {
+    async getServiceStatus() {
         try {
-            const aiProcessor = new AIProcessor();
-            const isAvailable = await aiProcessor.isOpenAIAvailable();
+            const isAvailable = await this.motdProcessor.isAvailable();
 
             return {
                 success: true,
                 status: isAvailable ? 'available' : 'unavailable',
                 timestamp: new Date().toISOString(),
                 model: config.openai.model,
-                environment: config.nodeEnv
+                environment: config.nodeEnv,
+                availableStrategies: this.aiRequestContext.getAvailableTypes()
             };
         } catch (error) {
             logError('AI service status failed', { error: error.message });
@@ -275,27 +321,31 @@ class AIService {
      * Gets AI service statistics
      * @returns {Promise<Object>} - Service statistics
      */
-    static async getServiceStats() {
+    async getServiceStats() {
         try {
-            const [motdHistory, openaiHistory] = await Promise.all([
-                databaseManager.getMOTDHistory(100),
-                databaseManager.getOpenAIHistory(100)
+            const [motdStats, openaiStats] = await Promise.all([
+                this.motdRepository.getMOTDStats(),
+                this.openaiRequestRepository.getRequestStats()
             ]);
 
             const stats = {
                 motd: {
-                    total: motdHistory.length,
-                    languages: motdHistory.reduce((acc, item) => {
-                        acc[item.language] = (acc[item.language] || 0) + 1;
+                    total: motdStats.reduce((sum, item) => sum + item.total_count, 0),
+                    languages: motdStats.reduce((acc, item) => {
+                        acc[item.language] = item.total_count;
                         return acc;
                     }, {})
                 },
                 openai: {
-                    total: openaiHistory.length,
-                    types: openaiHistory.reduce((acc, item) => {
-                        acc[item.request_type] = (acc[item.request_type] || 0) + 1;
+                    total: openaiStats.reduce((sum, item) => sum + item.total_count, 0),
+                    types: openaiStats.reduce((acc, item) => {
+                        acc[item.request_type] = item.total_count;
                         return acc;
                     }, {})
+                },
+                strategies: {
+                    available: this.aiRequestContext.getAvailableTypes(),
+                    count: this.aiRequestContext.getAvailableTypes().length
                 },
                 timestamp: new Date().toISOString()
             };
@@ -306,6 +356,31 @@ class AIService {
             };
         } catch (error) {
             logError('AI service stats failed', { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Gets available AI strategies
+     * @returns {Promise<Object>} - Available strategies
+     */
+    async getAvailableStrategies() {
+        try {
+            const strategies = this.aiRequestContext.getAvailableTypes();
+            const availability = {};
+
+            for (const strategy of strategies) {
+                availability[strategy] = await this.aiRequestContext.isStrategyAvailable(strategy);
+            }
+
+            return {
+                success: true,
+                strategies,
+                availability,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logError('Failed to get available strategies', { error: error.message });
             throw error;
         }
     }

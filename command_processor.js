@@ -1,3 +1,4 @@
+require('openai/shims/node');
 const OpenAI = require('openai');
 const sqlite3 = require('sqlite3').verbose();
 const fetch = require('node-fetch');
@@ -6,6 +7,7 @@ const EmulationManager = require('./Emulation/emulation_manager');
 // Initialize OpenAI client
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+    dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
 });
 
 // Initialize SQLite database
@@ -651,11 +653,11 @@ Keep the response informative and professional.`
         
         // Default TCC response
         return `ТЦК (Территориальные центры комплектования) - это военные учреждения, отвечающие за призыв и комплектование вооруженных сил.
-Для получения информации о конкретных делах, связанных с ТЦК, используйте команду с ключевыми словами "найди", "список", "дело" или "номер".`;
+Для получения информации о конкретных делах, связанных с ТЦК, используйте команду с ключевыми словами "найди", "список", "дело" или "номер".\n`;
         
     } catch (error) {
         console.error('TCC request processing error:', error);
-        return `Ошибка обработки запроса ТЦК: ${error.message}`;
+        return `Ошибка обработки запроса ТЦК: ${error.message}\n`;
     }
 }
 
@@ -764,7 +766,7 @@ function showApiConnections() {
     output += `   Primary: OpenAI API (${connections.find(c => c.name === 'OpenAI API')?.status || 'Unknown'})\n`;
     output += `   Legal: Zakon Online API (${connections.find(c => c.name === 'Zakon Online API')?.status || 'Unknown'})\n`;
     
-    return output;
+    return output + '\n';
 }
 
 /**
@@ -802,7 +804,7 @@ async function showZakonOnlineStats() {
         return output;
     } catch (error) {
         console.error('Error showing Zakon Online stats:', error);
-        return `Помилка отримання статистики: ${error.message}`;
+        return `Помилка отримання статистики: ${error.message}\n`;
     }
 }
 
@@ -837,7 +839,7 @@ async function showZakonOnlineHistory(limit = 10) {
         return output;
     } catch (error) {
         console.error('Error showing Zakon Online history:', error);
-        return `Помилка отримання історії: ${error.message}`;
+        return `Помилка отримання історії: ${error.message}\n`;
     }
 }
 
@@ -869,7 +871,7 @@ async function showTopSearches(limit = 10) {
         return output;
     } catch (error) {
         console.error('Error showing top searches:', error);
-        return `Помилка отримання топу запитів: ${error.message}`;
+        return `Помилка отримання топу запитів: ${error.message}\n`;
     }
 }
 
@@ -888,7 +890,7 @@ async function processRunCommand(command) {
     console.log('Command parts:', parts);
     
     if (parts.length < 2) {
-        return `Usage: run <emulator> [options]\nAvailable emulators: asm, pascal\nUse "run help" for more information.`;
+        return `Usage: run <emulator> [options]\nAvailable emulators: asm, pascal, dos, qemu\nUse "run help" for more information.`;
     }
     
     const subCommand = parts[1].toLowerCase();
@@ -899,13 +901,26 @@ async function processRunCommand(command) {
             case 'asm':
             case 'assembler':
                 console.log('Processing assembler command');
-                return processAssemblerCommand(parts.slice(2));
+                return await processAssemblerCommand(parts.slice(2));
             
             case 'pascal':
             case 'turbopascal':
             case 'tp':
                 console.log('Processing pascal command');
-                return processPascalCommand(parts.slice(2));
+                return await processPascalCommand(parts.slice(2));
+            
+            case 'dos':
+            case 'dosbox':
+                console.log('Processing DOS command');
+                return await processDOSCommand(parts.slice(2));
+            
+            case 'qemu':
+                console.log('Processing QEMU command');
+                return await processQEMUCommand(parts.slice(2));
+            
+            case 'ssh':
+                console.log('Processing SSH command');
+                return await processSSHCommand(parts.slice(2));
             
             case 'list':
                 console.log('Processing list command');
@@ -917,7 +932,7 @@ async function processRunCommand(command) {
             
             default:
                 console.log('Unknown subcommand:', subCommand);
-                return `Unknown emulator: ${subCommand}\nAvailable emulators: asm, pascal\nUse "run help" for more information.`;
+                return `Unknown emulator: ${subCommand}\nAvailable emulators: asm, pascal, dos, qemu\nUse "run help" for more information.`;
         }
     } catch (error) {
         console.error('Error in processRunCommand:', error);
@@ -928,12 +943,12 @@ async function processRunCommand(command) {
 /**
  * Process assembler commands
  * @param {Array} args - Command arguments
- * @returns {string} - Command result
+ * @returns {Promise<string>} - Command result
  */
-function processAssemblerCommand(args) {
+async function processAssemblerCommand(args) {
     if (args.length === 0) {
-        // Initialize assembler
-        const result = emulationManager.initializeEmulator('asm');
+        // Initialize assembler with Docker container
+        const result = await emulationManager.initializeDockerEmulator('asm');
         return result.success ? result.header : result.message;
     }
     
@@ -946,9 +961,9 @@ function processAssemblerCommand(args) {
         
         case 'sample':
             if (args.length < 2) {
-                return 'Usage: run asm sample <type>\nAvailable types: hello, add';
+                return 'Usage: run asm sample <type>\nAvailable types: hello, add, factorial';
             }
-            const sampleResult = emulationManager.createSample('asm', args[1]);
+            const sampleResult = await emulationManager.createDockerSample('asm', args[1]);
             return sampleResult.success ? 
                 `${sampleResult.message}\n\nSource code:\n${sampleResult.sourceCode}` : 
                 sampleResult.message;
@@ -957,48 +972,52 @@ function processAssemblerCommand(args) {
             if (args.length < 2) {
                 return 'Usage: run asm compile <filename>';
             }
-            const loadResult = emulationManager.loadFile(args[1]);
+            const loadResult = await emulationManager.loadDockerFile(args[1]);
             if (!loadResult.success) {
                 return loadResult.message;
             }
-            const compileResult = emulationManager.compile(loadResult.sourceCode);
+            const compileResult = await emulationManager.compileDocker(loadResult.sourceCode, 'asm');
             return compileResult.display;
         
         case 'execute':
             if (args.length < 2) {
                 return 'Usage: run asm execute <filename>';
             }
-            const loadResult2 = emulationManager.loadFile(args[1]);
+            const loadResult2 = await emulationManager.loadDockerFile(args[1]);
             if (!loadResult2.success) {
                 return loadResult2.message;
             }
-            const compileResult2 = emulationManager.compile(loadResult2.sourceCode);
+            const compileResult2 = await emulationManager.compileDocker(loadResult2.sourceCode, 'asm');
             if (!compileResult2.success) {
                 return compileResult2.display;
             }
-            const executeResult = emulationManager.execute();
+            const executeResult = await emulationManager.executeDocker('asm');
             return executeResult.display;
         
         default:
             // Assume it's a filename - load, compile and execute
-            const loadResult3 = emulationManager.loadFile(args[0]);
+            const loadResult3 = await emulationManager.loadDockerFile(args[0]);
             if (!loadResult3.success) {
                 return loadResult3.message;
             }
-            const fullResult = emulationManager.compileAndExecute(loadResult3.sourceCode);
-            return fullResult.display;
+            const compileResult3 = await emulationManager.compileDocker(loadResult3.sourceCode, 'asm');
+            if (!compileResult3.success) {
+                return compileResult3.display;
+            }
+            const executeResult2 = await emulationManager.executeDocker('asm');
+            return executeResult2.display;
     }
 }
 
 /**
  * Process Pascal commands
  * @param {Array} args - Command arguments
- * @returns {string} - Command result
+ * @returns {Promise<string>} - Command result
  */
-function processPascalCommand(args) {
+async function processPascalCommand(args) {
     if (args.length === 0) {
-        // Initialize Pascal
-        const result = emulationManager.initializeEmulator('pascal');
+        // Initialize Pascal with Docker container
+        const result = await emulationManager.initializeDockerEmulator('pascal');
         return result.success ? result.header : result.message;
     }
     
@@ -1011,9 +1030,9 @@ function processPascalCommand(args) {
         
         case 'sample':
             if (args.length < 2) {
-                return 'Usage: run pascal sample <type>\nAvailable types: hello, factorial, calculator';
+                return 'Usage: run pascal sample <type>\nAvailable types: hello, calculator, factorial';
             }
-            const sampleResult = emulationManager.createSample('pascal', args[1]);
+            const sampleResult = await emulationManager.createDockerSample('pascal', args[1]);
             return sampleResult.success ? 
                 `${sampleResult.message}\n\nSource code:\n${sampleResult.sourceCode}` : 
                 sampleResult.message;
@@ -1022,36 +1041,106 @@ function processPascalCommand(args) {
             if (args.length < 2) {
                 return 'Usage: run pascal compile <filename>';
             }
-            const loadResult = emulationManager.loadFile(args[1]);
+            const loadResult = await emulationManager.loadDockerFile(args[1]);
             if (!loadResult.success) {
                 return loadResult.message;
             }
-            const compileResult = emulationManager.compile(loadResult.sourceCode);
+            const compileResult = await emulationManager.compileDocker(loadResult.sourceCode, 'pascal');
             return compileResult.display;
         
         case 'execute':
             if (args.length < 2) {
                 return 'Usage: run pascal execute <filename>';
             }
-            const loadResult2 = emulationManager.loadFile(args[1]);
+            const loadResult2 = await emulationManager.loadDockerFile(args[1]);
             if (!loadResult2.success) {
                 return loadResult2.message;
             }
-            const compileResult2 = emulationManager.compile(loadResult2.sourceCode);
+            const compileResult2 = await emulationManager.compileDocker(loadResult2.sourceCode, 'pascal');
             if (!compileResult2.success) {
                 return compileResult2.display;
             }
-            const executeResult = emulationManager.execute();
+            const executeResult = await emulationManager.executeDocker('pascal');
             return executeResult.display;
         
         default:
             // Assume it's a filename - load, compile and execute
-            const loadResult3 = emulationManager.loadFile(args[0]);
+            const loadResult3 = await emulationManager.loadDockerFile(args[0]);
             if (!loadResult3.success) {
                 return loadResult3.message;
             }
-            const fullResult = emulationManager.compileAndExecute(loadResult3.sourceCode);
-            return fullResult.display;
+            const compileResult3 = await emulationManager.compileDocker(loadResult3.sourceCode, 'pascal');
+            if (!compileResult3.success) {
+                return compileResult3.display;
+            }
+            const executeResult2 = await emulationManager.executeDocker('pascal');
+            return executeResult2.display;
+    }
+}
+
+/**
+ * Process DOS commands
+ * @param {Array} args - Command arguments
+ * @returns {Promise<string>} - Command result
+ */
+async function processDOSCommand(args) {
+    if (args.length === 0) {
+        return `Usage: run dos <command>\nAvailable DOS commands: dir, type, echo, cls, help`;
+    }
+
+    const command = args.join(' ');
+    console.log('Processing DOS command:', command);
+
+    try {
+        const dosResult = await emulationManager.executeDOSCommand(command);
+        return dosResult.display;
+    } catch (error) {
+        console.error('DOS command error:', error);
+        return `Error executing DOS command: ${error.message}`;
+    }
+}
+
+/**
+ * Process QEMU commands
+ * @param {Array} args - Command arguments
+ * @returns {Promise<string>} - Command result
+ */
+async function processQEMUCommand(args) {
+    if (args.length === 0) {
+        return `Usage: run qemu <command>\nAvailable QEMU commands: info, help, exit`;
+    }
+
+    const command = args.join(' ');
+    console.log('Processing QEMU command:', command);
+
+    try {
+        const qemuResult = await emulationManager.executeQEMUCommand(command);
+        return qemuResult.display;
+    } catch (error) {
+        console.error('QEMU command error:', error);
+        return `Error executing QEMU command: ${error.message}`;
+    }
+}
+
+/**
+ * Process SSH commands
+ * @param {Array} args - Command arguments
+ * @returns {Promise<string>} - Command result
+ */
+async function processSSHCommand(args) {
+    if (args.length === 0) {
+        return `Usage: run ssh <command>\nAvailable SSH commands: ls, pwd, cd, cat, echo, clear, help`;
+    }
+
+    const command = args.join(' ');
+    console.log('Processing SSH command:', command);
+
+    try {
+        const sshResult = await emulationManager.executeSSHCommand(command);
+        return sshResult.display;
+    } catch (error) {
+        console.error('SSH command error:', error);
+        return `Error executing SSH command: ${error.message}`;
     }
 }
 
@@ -1087,13 +1176,167 @@ function processListCommand() {
  */
 function processHelpCommand(args) {
     if (args.length === 0) {
-        const helpResult = emulationManager.getHelp();
-        return `${helpResult.message}\n\n${helpResult.help}`;
+        return `RUN Command Help
+
+USAGE: run <emulator> [options]
+
+AVAILABLE EMULATORS:
+  asm, assembler    - NASM Assembler (x86)
+  pascal, tp        - Free Pascal Compiler (Turbo Pascal compatible)
+  dos, dosbox       - DOSBox emulator
+  qemu              - QEMU system emulator
+  ssh               - SSH access to Docker containers
+
+EXAMPLES:
+  run asm                    - Initialize assembler
+  run asm sample hello      - Create hello.asm sample
+  run asm compile hello.asm - Compile assembler file
+  run asm hello.asm         - Load, compile and execute
+  
+  run pascal                 - Initialize Pascal
+  run pascal sample calc     - Create calculator.pas sample
+  run pascal compile calc.pas - Compile Pascal file
+  run pascal calc.pas        - Load, compile and execute
+  
+  run dos dir               - Execute DOS command
+  run qemu info             - Get QEMU information
+  run ssh ls                - List files via SSH
+
+DOCKER CONTAINERS:
+  All emulators run in isolated Docker containers
+  SSH access available for direct container interaction
+  CRT-style output formatting for retro experience
+
+For specific emulator help: run <emulator> help`;
     }
+
+    const emulator = args[0].toLowerCase();
     
-    const emulatorType = args[0].toLowerCase();
-    const helpResult = emulationManager.getHelp(emulatorType);
-    return `${helpResult.message}\n\n${helpResult.help}`;
+    switch (emulator) {
+        case 'asm':
+        case 'assembler':
+            return `ASSEMBLER (NASM) Help
+
+COMMANDS:
+  run asm                    - Initialize assembler environment
+  run asm sample <type>      - Create sample program
+  run asm compile <file>     - Compile assembler file
+  run asm execute <file>     - Execute compiled program
+  run asm <file>             - Load, compile and execute
+
+SAMPLE TYPES:
+  hello      - Hello World program
+  add        - Addition program
+  factorial  - Factorial calculation
+
+FEATURES:
+  - Full x86 instruction set support
+  - ELF64 output format
+  - Automatic linking
+  - GDB debugging support
+  - Docker container isolation
+  - CRT-style output formatting
+
+EXAMPLE:
+  run asm sample hello
+  run asm hello.asm`;
+
+        case 'pascal':
+        case 'tp':
+            return `PASCAL (Free Pascal) Help
+
+COMMANDS:
+  run pascal                 - Initialize Pascal environment
+  run pascal sample <type>   - Create sample program
+  run pascal compile <file>  - Compile Pascal file
+  run pascal execute <file>  - Execute compiled program
+  run pascal <file>          - Load, compile and execute
+
+SAMPLE TYPES:
+  hello      - Hello World program
+  calculator - Simple calculator
+  factorial  - Factorial calculation
+
+FEATURES:
+  - Turbo Pascal 7.0 compatibility
+  - Modern Free Pascal compiler
+  - Cross-platform support
+  - Code optimization
+  - Docker container isolation
+  - CRT-style output formatting
+
+EXAMPLE:
+  run pascal sample calculator
+  run pascal calculator.pas`;
+
+        case 'dos':
+        case 'dosbox':
+            return `DOSBOX Help
+
+COMMANDS:
+  run dos <command>          - Execute DOS command
+  run dos dir               - List files
+  run dos type <file>       - Display file contents
+  run dos echo <text>       - Display text
+  run dos cls               - Clear screen
+
+FEATURES:
+  - Full DOS environment emulation
+  - Classic DOS commands
+  - Game and program compatibility
+  - Sound and graphics support
+  - CRT-style output formatting
+
+EXAMPLE:
+  run dos dir
+  run dos type autoexec.bat`;
+
+        case 'qemu':
+            return `QEMU Help
+
+COMMANDS:
+  run qemu <command>         - Execute QEMU command
+  run qemu info              - System information
+  run qemu help              - QEMU help
+  run qemu exit              - Exit QEMU
+
+FEATURES:
+  - Full system emulation
+  - Multiple architecture support
+  - KVM virtualization
+  - Network capabilities
+  - CRT-style output formatting
+
+EXAMPLE:
+  run qemu info
+  run qemu help`;
+
+        case 'ssh':
+            return `SSH Help
+
+COMMANDS:
+  run ssh <command>          - Execute SSH command
+  run ssh ls                 - List files
+  run ssh pwd                - Show current directory
+  run ssh cd <dir>           - Change directory
+  run ssh cat <file>         - Display file contents
+  run ssh echo <text>        - Display text
+  run ssh clear              - Clear screen
+
+FEATURES:
+  - Direct Docker container access
+  - Secure shell connection
+  - File system navigation
+  - Command execution
+  - CRT-style output formatting
+
+EXAMPLE:
+  run ssh ls -la
+  run ssh cat /etc/os-release`;
+
+        default:
+            return `Unknown emulator: ${emulator}\nAvailable emulators: asm, pascal, dos, qemu, ssh\nUse "run help" for general help.`;
+    }
 }
 
 module.exports = {
@@ -1107,5 +1350,12 @@ module.exports = {
     showZakonOnlineStats,
     showZakonOnlineHistory,
     showTopSearches,
-    processRunCommand
+    processRunCommand,
+    processAssemblerCommand,
+    processPascalCommand,
+    processDOSCommand,
+    processQEMUCommand,
+    processSSHCommand,
+    processListCommand,
+    processHelpCommand
 }; 

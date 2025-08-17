@@ -11,9 +11,10 @@ services:
       - ./docker/output:/workspace/output
     ports:
       - "8081:8080"
+      - "2222:22"  # SSH port
     environment:
       - DISPLAY=${DISPLAY}
-    command: /bin/bash
+    command: /usr/local/bin/start-services.sh
     stdin_open: true
     tty: true
 
@@ -24,7 +25,9 @@ services:
     volumes:
       - ./Emulation/workspace:/workspace
       - ./docker/dos-programs:/workspace/dos
-    command: dosbox -conf /root/.dosbox/dosbox-0.74-3.conf
+    ports:
+      - "2223:22"  # SSH port for DOSBox
+    command: /usr/local/bin/start-services.sh
     stdin_open: true
     tty: true
 
@@ -35,7 +38,9 @@ services:
     volumes:
       - ./Emulation/workspace:/workspace
       - ./docker/iso:/workspace/iso
-    command: /bin/bash
+    ports:
+      - "2224:22"  # SSH port for QEMU
+    command: /usr/local/bin/start-services.sh
     stdin_open: true
     tty: true
 

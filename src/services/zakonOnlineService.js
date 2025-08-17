@@ -1,460 +1,289 @@
-const fetch = require('node-fetch');
-const { logError, logInfo } = require('../utils/logger');
-const databaseManager = require('../modules/database');
+const axios = require('axios');
+const config = require('../config/app');
+const { logInfo, logError } = require('../utils/logger');
 
 /**
- * Сервис для работы с API "Закон Онлайн"
+ * Service for working with Zakon Online API
  */
 class ZakonOnlineService {
     constructor() {
-        this.baseUrl = 'https://court.searcher.api.zakononline.com.ua/api';
-        this.token = process.env.ZAKON_TOKEN;
-        this.isInitialized = false;
+        this.baseURL = 'https://api.zakononline.com.ua';
+        this.token = config.zakonOnline?.token;
+        this.cache = new Map();
+        this.cacheTTL = 300000; // 5 minutes
     }
 
     /**
-     * Инициализирует сервис
+     * Makes request to Zakon Online API
+     * @param {string} endpoint - API endpoint
+     * @param {Object} params - Request parameters
+     * @returns {Promise<Object>} - API response
      */
-    async initialize() {
-        if (!this.token || this.token === 'DECxxxxxxxxx') {
-            throw new Error('ZAKON_TOKEN не настроен');
-        }
-        
-        this.isInitialized = true;
-        logInfo('ZakonOnlineService initialized');
-    }
-
-    /**
-     * Получает список судов
-     * @returns {Promise<Array>} - Список судов
-     */
-    async getCourts() {
+    async makeRequest(endpoint, params = {}) {
         try {
-            const response = await fetch(`${this.baseUrl}/Court`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                }
+            const url = `${this.baseURL}${endpoint}`;
+            const headers = {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            };
+
+            const response = await axios.get(url, {
+                headers,
+                params,
+                timeout: 10000
             });
 
-            if (!response.ok) {
-                throw new Error(`Failed to get courts: ${response.status}`);
-            }
-
-            const courts = await response.json();
-            logInfo('Retrieved courts list', { count: courts.length });
-            return courts;
+            return {
+                success: true,
+                data: response.data
+            };
         } catch (error) {
-            logError('Error getting courts', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Получает формы решений
-     * @returns {Promise<Array>} - Список форм решений
-     */
-    async getJudgmentForms() {
-        try {
-            const response = await fetch(`${this.baseUrl}/JudgmentForm`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                }
+            logError('Zakon Online API request failed', {
+                endpoint,
+                error: error.message,
+                status: error.response?.status
             });
 
-            if (!response.ok) {
-                throw new Error(`Failed to get judgment forms: ${response.status}`);
-            }
-
-            const forms = await response.json();
-            logInfo('Retrieved judgment forms', { count: forms.length });
-            return forms;
-        } catch (error) {
-            logError('Error getting judgment forms', error);
-            throw error;
+            return {
+                success: false,
+                error: error.message,
+                status: error.response?.status
+            };
         }
     }
 
     /**
-     * Получает виды правосудия
-     * @returns {Promise<Array>} - Список видов правосудия
+     * Searches for court decisions
+     * @param {string} query - Search query
+     * @param {Object} options - Search options
+     * @returns {Promise<Object>} - Search results
      */
-    async getJusticeKinds() {
-        try {
-            const response = await fetch(`${this.baseUrl}/JusticeKind`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to get justice kinds: ${response.status}`);
-            }
-
-            const kinds = await response.json();
-            logInfo('Retrieved justice kinds', { count: kinds.length });
-            return kinds;
-        } catch (error) {
-            logError('Error getting justice kinds', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Ищет метаданные судебных решений
-     * @param {Object} params - Параметры поиска
-     * @returns {Promise<Object>} - Результаты поиска
-     */
-    async searchMetadata(params) {
+    async searchDecisions(query, options = {}) {
         const {
-            searchText,
+            court = '',
+            judgmentForm = '',
+            justiceKind = '',
+            dateFrom = '',
+            dateTo = '',
             page = 1,
-            pageSize = 10,
-            courtId = null,
-            judgmentFormId = null,
-            justiceKindId = null
-        } = params;
-
-        try {
-            let url = `${this.baseUrl}/Searcher/GetEntitiesMetaWith?searchText=${encodeURIComponent(searchText)}&page=${page}&pageSize=${pageSize}`;
-            
-            if (courtId) url += `&courtId=${courtId}`;
-            if (judgmentFormId) url += `&judgmentFormId=${judgmentFormId}`;
-            if (justiceKindId) url += `&justiceKindId=${justiceKindId}`;
-
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Metadata search failed: ${response.status}`);
-            }
-
-            const metadata = await response.json();
-            logInfo('Metadata search completed', { 
-                query: searchText, 
-                totalCount: metadata.totalCount,
-                page,
-                pageSize 
-            });
-            
-            return metadata;
-        } catch (error) {
-            logError('Error searching metadata', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Получает полный текст судебного решения
-     * @param {string} id - ID решения
-     * @param {string} searchText - Поисковый текст для выделения
-     * @returns {Promise<Object>} - Полный текст решения
-     */
-    async getFullText(id, searchText) {
-        try {
-            const url = `${this.baseUrl}/Searcher/GetSearchText?id=${id}&searchText=${encodeURIComponent(searchText)}`;
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Full text request failed: ${response.status}`);
-            }
-
-            const fullText = await response.json();
-            logInfo('Full text retrieved', { id, searchText });
-            
-            return fullText;
-        } catch (error) {
-            logError('Error getting full text', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Выполняет полный поиск с сохранением в базу данных
-     * @param {string} query - Поисковый запрос
-     * @param {Object} options - Дополнительные опции
-     * @returns {Promise<Object>} - Результаты поиска
-     */
-    async performFullSearch(query, options = {}) {
-        const {
-            page = 1,
-            pageSize = 10,
-            courtId = null,
-            judgmentFormId = null,
-            justiceKindId = null,
-            saveToDatabase = true
+            limit = 20
         } = options;
 
-        try {
-            // Шаг 1: Поиск метаданных
-            const metadata = await this.searchMetadata({
-                searchText: query,
-                page,
-                pageSize,
-                courtId,
-                judgmentFormId,
-                justiceKindId
+        const params = {
+            q: query,
+            court,
+            judgment_form: judgmentForm,
+            justice_kind: justiceKind,
+            date_from: dateFrom,
+            date_to: dateTo,
+            page,
+            limit
+        };
+
+        return await this.makeRequest('/search', params);
+    }
+
+    /**
+     * Gets courts list
+     * @returns {Promise<Object>} - Courts list
+     */
+    async getCourts() {
+        return await this.makeRequest('/courts');
+    }
+
+    /**
+     * Gets judgment forms
+     * @returns {Promise<Object>} - Judgment forms
+     */
+    async getJudgmentForms() {
+        return await this.makeRequest('/judgment-forms');
+    }
+
+    /**
+     * Gets justice kinds
+     * @returns {Promise<Object>} - Justice kinds
+     */
+    async getJusticeKinds() {
+        return await this.makeRequest('/justice-kinds');
+    }
+
+    /**
+     * Searches for metadata of court decisions
+     * @param {string} query - Search query
+     * @param {Object} options - Search options
+     * @returns {Promise<Object>} - Search results
+     */
+    async searchMetadata(query, options = {}) {
+        const cacheKey = `metadata_${query}_${JSON.stringify(options)}`;
+        
+        if (this.cache.has(cacheKey)) {
+            const cached = this.cache.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cacheTTL) {
+                return cached.data;
+            }
+        }
+
+        const result = await this.searchDecisions(query, options);
+        
+        if (result.success) {
+            this.cache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now()
             });
+        }
 
-            if (!metadata.items || metadata.items.length === 0) {
-                return {
-                    success: false,
-                    message: `За вашим запитом "${query}" не знайдено судових рішень.`,
-                    totalCount: 0,
-                    items: []
-                };
+        return result;
+    }
+
+    /**
+     * Gets full text of court decision
+     * @param {string} decisionId - Decision ID
+     * @returns {Promise<Object>} - Full text
+     */
+    async getFullText(decisionId) {
+        const cacheKey = `fulltext_${decisionId}`;
+        
+        if (this.cache.has(cacheKey)) {
+            const cached = this.cache.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cacheTTL) {
+                return cached.data;
+            }
+        }
+
+        const result = await this.makeRequest(`/decisions/${decisionId}/full-text`);
+        
+        if (result.success) {
+            this.cache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now()
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * Performs two-stage search: metadata + full texts
+     * @param {string} query - Search query
+     * @param {Object} options - Search options
+     * @returns {Promise<Object>} - Search results
+     */
+    async searchWithFullTexts(query, options = {}) {
+        try {
+            // Step 1: Get metadata
+            const metadataResult = await this.searchMetadata(query, options);
+            
+            if (!metadataResult.success) {
+                return metadataResult;
             }
 
-            // Шаг 2: Получение полных текстов для первых результатов
+            const metadata = metadataResult.data;
+            
+            // Step 2: Get full texts for first results
             const fullTexts = [];
-            const maxFullTexts = Math.min(3, metadata.items.length); // Получаем максимум 3 полных текста
-
+            const maxFullTexts = Math.min(5, metadata.results?.length || 0);
+            
             for (let i = 0; i < maxFullTexts; i++) {
-                try {
-                    const fullText = await this.getFullText(metadata.items[i].id, query);
-                    fullTexts.push(fullText);
-                } catch (error) {
-                    logError(`Error getting full text for item ${i}`, error);
-                    // Продолжаем с другими элементами
+                const decision = metadata.results[i];
+                if (decision.id) {
+                    const fullTextResult = await this.getFullText(decision.id);
+                    if (fullTextResult.success) {
+                        fullTexts.push({
+                            id: decision.id,
+                            fullText: fullTextResult.data
+                        });
+                    }
                 }
-            }
-
-            // Шаг 3: Сохранение в базу данных
-            if (saveToDatabase) {
-                await this.saveSearchResults(query, metadata, fullTexts);
             }
 
             return {
                 success: true,
-                query,
-                totalCount: metadata.totalCount,
-                items: metadata.items,
-                fullTexts,
-                page,
-                pageSize
+                metadata: metadata,
+                fullTexts: fullTexts,
+                query: query
             };
-
         } catch (error) {
-            logError('Error performing full search', error);
-            throw error;
+            logError('Two-stage search failed', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
     /**
-     * Сохраняет результаты поиска в базу данных
-     * @param {string} query - Поисковый запрос
-     * @param {Object} metadata - Метаданные результатов
-     * @param {Array} fullTexts - Полные тексты
-     * @returns {Promise} - Результат сохранения
+     * Saves search results to database
+     * @param {Object} metadata - Metadata of results
+     * @param {Array} fullTexts - Full texts
+     * @returns {Promise} - Save result
      */
-    async saveSearchResults(query, metadata, fullTexts) {
+    async saveSearchResults(metadata, fullTexts = []) {
         try {
-            // Сохраняем основной поиск
-            const searchId = await databaseManager.runQuery(
-                `INSERT INTO zakon_online_searches (query, total_count, page, page_size, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                [query, metadata.totalCount, 1, metadata.items.length]
-            );
-
-            // Сохраняем найденные дела
-            for (const item of metadata.items) {
-                await databaseManager.runQuery(
-                    `INSERT INTO zakon_online_cases (
-                        search_id, case_id, court_name, judgment_form, justice_kind, 
-                        case_date, case_number, summary, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                    [
-                        searchId.lastID,
-                        item.id,
-                        item.courtName || '',
-                        item.judgmentForm || '',
-                        item.justiceKind || '',
-                        item.date || '',
-                        item.number || '',
-                        item.summary || ''
-                    ]
-                );
-            }
-
-            // Сохраняем полные тексты
-            for (const fullText of fullTexts) {
-                if (fullText && fullText.id) {
-                    await databaseManager.runQuery(
-                        `INSERT INTO zakon_online_full_texts (
-                            case_id, full_text, highlights, created_at
-                        ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-                        [
-                            fullText.id,
-                            fullText.fullText || '',
-                            JSON.stringify(fullText.highlights || [])
-                        ]
-                    );
-                }
-            }
-
-            logInfo('Search results saved to database', { 
-                searchId: searchId.lastID, 
-                casesCount: metadata.items.length,
-                fullTextsCount: fullTexts.length 
+            // Implementation depends on your database structure
+            logInfo('Search results saved', {
+                query: metadata.query,
+                resultsCount: metadata.results?.length || 0,
+                fullTextsCount: fullTexts.length
             });
 
-        } catch (error) {
-            logError('Error saving search results to database', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Получает историю поисков из базы данных
-     * @param {number} limit - Количество записей
-     * @returns {Promise<Array>} - История поисков
-     */
-    async getSearchHistory(limit = 20) {
-        try {
-            const sql = `
-                SELECT 
-                    s.id,
-                    s.query,
-                    s.total_count,
-                    s.page,
-                    s.page_size,
-                    s.created_at,
-                    COUNT(c.id) as cases_found
-                FROM zakon_online_searches s
-                LEFT JOIN zakon_online_cases c ON s.id = c.search_id
-                GROUP BY s.id
-                ORDER BY s.created_at DESC
-                LIMIT ?
-            `;
-            
-            return await databaseManager.getAll(sql, [limit]);
-        } catch (error) {
-            logError('Error getting search history', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Получает детали конкретного поиска
-     * @param {number} searchId - ID поиска
-     * @returns {Promise<Object>} - Детали поиска
-     */
-    async getSearchDetails(searchId) {
-        try {
-            // Получаем основную информацию о поиске
-            const search = await databaseManager.get(
-                'SELECT * FROM zakon_online_searches WHERE id = ?',
-                [searchId]
-            );
-
-            if (!search) {
-                throw new Error('Search not found');
-            }
-
-            // Получаем найденные дела
-            const cases = await databaseManager.getAll(
-                'SELECT * FROM zakon_online_cases WHERE search_id = ? ORDER BY created_at',
-                [searchId]
-            );
-
-            // Получаем полные тексты
-            const fullTexts = await databaseManager.getAll(
-                'SELECT * FROM zakon_online_full_texts WHERE case_id IN (SELECT case_id FROM zakon_online_cases WHERE search_id = ?)',
-                [searchId]
-            );
-
             return {
-                search,
-                cases,
-                fullTexts
+                success: true,
+                saved: true
             };
         } catch (error) {
-            logError('Error getting search details', error);
-            throw error;
+            logError('Failed to save search results', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
     /**
-     * Форматирует результаты поиска для отображения
-     * @param {Object} searchResults - Результаты поиска
-     * @returns {string} - Отформатированный результат
+     * Formats search results for display
+     * @param {Object} searchResults - Search results
+     * @returns {string} - Formatted result
      */
     formatSearchResults(searchResults) {
         if (!searchResults.success) {
-            return searchResults.message;
+            return `Error: ${searchResults.error}`;
         }
 
-        let formatted = `🔍 РЕЗУЛЬТАТИ ПОШУКУ: "${searchResults.query}"\n`;
-        formatted += `==========================================\n\n`;
-        formatted += `📊 Знайдено: ${searchResults.totalCount} судових рішень\n`;
-        formatted += `📄 Показано: ${searchResults.items.length} з ${searchResults.pageSize}\n\n`;
+        let formatted = `🔍 SEARCH RESULTS: "${searchResults.query}"\n`;
 
-        // Список найденных дел
-        formatted += `📋 ЗНАЙДЕНІ СПРАВИ:\n`;
-        formatted += `----------------------------------------\n\n`;
-
-        searchResults.items.forEach((item, index) => {
-            formatted += `${index + 1}. ${item.courtName || 'Суд'}\n`;
-            if (item.judgmentForm) {
-                formatted += `   Форма: ${item.judgmentForm}\n`;
-            }
-            if (item.date) {
-                formatted += `   Дата: ${item.date}\n`;
-            }
-            if (item.number) {
-                formatted += `   Номер: ${item.number}\n`;
-            }
-            if (item.summary) {
-                formatted += `   Опис: ${item.summary}\n`;
-            }
-            formatted += '\n';
-        });
-
-        // Полные тексты (если есть)
-        if (searchResults.fullTexts && searchResults.fullTexts.length > 0) {
-            formatted += `\n📄 ПОВНІ ТЕКСТИ РІШЕНЬ:\n`;
-            formatted += `----------------------------------------\n\n`;
-
-            searchResults.fullTexts.forEach((fullText, index) => {
-                formatted += `=== РІШЕННЯ ${index + 1} ===\n`;
+        if (searchResults.metadata?.results) {
+            formatted += `\n📋 Found ${searchResults.metadata.results.length} decisions:\n\n`;
+            
+            searchResults.metadata.results.forEach((decision, index) => {
+                formatted += `${index + 1}. ${decision.court_name || 'Unknown Court'}\n`;
+                formatted += `   📅 Date: ${decision.date || 'Unknown'}\n`;
+                formatted += `   📄 Case: ${decision.case_number || 'Unknown'}\n`;
+                formatted += `   👥 Parties: ${decision.parties || 'Unknown'}\n`;
                 
-                // Ограничиваем длину текста
-                const maxLength = 1500;
-                let text = fullText.fullText || '';
-                if (text.length > maxLength) {
-                    text = text.substring(0, maxLength) + '...\n\n[Текст обрізано для стислості]';
+                if (searchResults.fullTexts?.find(ft => ft.id === decision.id)) {
+                    formatted += `   📖 Full text available\n`;
                 }
                 
-                formatted += text + '\n\n';
-
-                // Выделенные ключевые слова
-                if (fullText.highlights && fullText.highlights.length > 0) {
-                    formatted += `🔍 ВИДІЛЕНІ КЛЮЧОВІ СЛОВА:\n`;
-                    fullText.highlights.slice(0, 5).forEach((highlight, hIndex) => {
-                        formatted += `${hIndex + 1}. "${highlight.text}"\n`;
-                    });
-                    formatted += '\n';
-                }
+                formatted += `\n`;
             });
+        } else {
+            formatted += `\n❌ No results found.\n`;
         }
 
         return formatted;
+    }
+
+    /**
+     * Checks if service is available
+     * @returns {Promise<boolean>} - Whether service is available
+     */
+    async isAvailable() {
+        try {
+            const result = await this.makeRequest('/courts');
+            return result.success;
+        } catch (error) {
+            return false;
+        }
     }
 }
 

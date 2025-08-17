@@ -1,18 +1,24 @@
 const express = require('express');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const config = require('./config/app');
-const databaseManager = require('./modules/database');
+const DatabaseManager = require('./modules/database');
 const { logInfo, logError } = require('./utils/logger');
 const SecurityMiddleware = require('./middleware/security');
 const ErrorHandler = require('./middleware/errorHandler');
+const container = require('./container/DIContainer');
 
 // Импорт маршрутов
 const networkRoutes = require('./routes/network');
 const aiRoutes = require('./routes/ai');
 const zakonOnlineRoutes = require('./routes/zakonOnline');
 const dockerRoutes = require('./routes/docker');
+const authRoutes = require('./routes/auth');
 
 const app = express();
+
+// Create database manager instance
+const databaseManager = new DatabaseManager();
 
 /**
  * Инициализация приложения
@@ -23,22 +29,28 @@ async function initializeApp() {
         await databaseManager.initialize();
         logInfo('Database initialized successfully');
 
-        // Парсинг JSON
+        // Инициализируем контейнер внедрения зависимостей
+        container.initialize();
+        logInfo('Dependency injection container initialized successfully');
+
+        // Парсинг JSON и cookies
         app.use(express.json({ limit: '1mb' }));
         app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+        app.use(cookieParser());
 
         // Статические файлы
         app.use(express.static(path.join(__dirname, '..')));
 
         // Главная страница
         app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, '..', 'retro_terminal_site.html'));
+            res.sendFile(path.join(__dirname, '..', 'retro_terminal_auth.html'));
         });
 
         // Настраиваем middleware безопасности только для API
         app.use('/api', SecurityMiddleware.getAllMiddleware());
 
         // Маршруты
+        app.use('/api/auth', authRoutes);
         app.use('/api', networkRoutes);
         app.use('/api', aiRoutes);
         app.use('/api/zakon-online', zakonOnlineRoutes);

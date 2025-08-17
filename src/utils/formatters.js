@@ -1,161 +1,221 @@
+const { logInfo } = require('./logger');
+
 /**
- * Форматирование вывода команд
+ * Formats search result in legal database
+ * @param {Object} searchResult - Search result
+ * @returns {string} - Formatted result
  */
-class OutputFormatter {
-    /**
-     * Форматирует общий вывод команды
-     * @param {string} output - Сырой вывод команды
-     * @returns {string} - Отформатированный вывод
-     */
-    static formatOutput(output) {
-        if (!output) return '';
-
-        return `${output
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .join('\n')}\n`;
+function formatLegalSearchResult(searchResult) {
+    if (!searchResult.success) {
+        return `Error: ${searchResult.error}`;
     }
 
-    /**
-     * Специальное форматирование для ping команды
-     * @param {string} output - Сырой вывод ping
-     * @returns {string} - Отформатированный вывод
-     */
-    static formatPingOutput(output) {
-        if (!output) return '';
+    let formatted = `🔍 LEGAL SEARCH RESULTS\n`;
+    formatted += `==========================================\n\n`;
 
-        const lines = output.split('\n');
-        const formattedLines = [];
-
-        for (let line of lines) {
-            line = line.trim();
-            if (line.length > 0) {
-                // Добавляем пустую строку после каждого ответа ping
-                if (line.includes('icmp_seq=') || line.includes('bytes from')) {
-                    formattedLines.push(line);
-                    formattedLines.push(''); // Пустая строка после каждого ответа
-                } else {
-                    formattedLines.push(line);
-                }
+    if (searchResult.metadata?.results) {
+        formatted += `📋 Found ${searchResult.metadata.results.length} decisions:\n\n`;
+        
+        searchResult.metadata.results.forEach((decision, index) => {
+            formatted += `${index + 1}. ${decision.court_name || 'Unknown Court'}\n`;
+            formatted += `   📅 Date: ${decision.date || 'Unknown'}\n`;
+            formatted += `   📄 Case: ${decision.case_number || 'Unknown'}\n`;
+            formatted += `   👥 Parties: ${decision.parties || 'Unknown'}\n`;
+            
+            if (searchResult.fullTexts?.find(ft => ft.id === decision.id)) {
+                formatted += `   📖 Full text available\n`;
             }
-        }
-
-        return `${formattedLines.join('\n')}\n`;
-    }
-
-    /**
-     * Форматирует системную информацию
-     * @param {Object} systemInfo - Информация о системе
-     * @returns {string} - Отформатированная информация
-     */
-    static formatSystemInfo(systemInfo) {
-        return `Platform: ${systemInfo.platform}
-Architecture: ${systemInfo.arch}
-Node Version: ${systemInfo.nodeVersion}
-Uptime: ${Math.floor(systemInfo.uptime / 60)} minutes
-`;
-    }
-
-    /**
-     * Форматирует MOTD сообщения
-     * @param {Array} multilingualMotds - Многоязычные MOTD
-     * @returns {string} - Отформатированный MOTD
-     */
-    static formatMOTD(multilingualMotds) {
-        if (!multilingualMotds || multilingualMotds.length === 0) {
-            return 'No MOTD available\n';
-        }
-
-        let formattedOutput = '';
-
-        // Начинаем с английского сообщения
-        formattedOutput += multilingualMotds[0].message;
-
-        // Добавляем переводы на новых строках
-        for (let i = 1; i < multilingualMotds.length; i++) {
-            formattedOutput += `\n${multilingualMotds[i].message}`;
-        }
-
-        return `${formattedOutput}\n`;
-    }
-
-    /**
-     * Форматирует историю MOTD
-     * @param {Array} history - История MOTD
-     * @returns {string} - Отформатированная история
-     */
-    static formatMOTDHistory(history) {
-        if (!history || history.length === 0) {
-            return 'No MOTD history available\n';
-        }
-
-        let formattedOutput = 'MOTD History:\n\n';
-
-        history.forEach((item, index) => {
-            formattedOutput += `${index + 1}. [${item.language}] ${item.message}\n`;
-            formattedOutput += `   Date: ${item.created_at}\n\n`;
+            
+            formatted += `\n`;
         });
-
-        return formattedOutput;
+    } else {
+        formatted += `❌ No results found.\n`;
     }
 
-    /**
-     * Форматирует ошибку
-     * @param {string} error - Сообщение об ошибке
-     * @returns {string} - Отформатированная ошибка
-     */
-    static formatError(error) {
-        return `Error: ${error}\n`;
-    }
-
-    /**
-     * Форматирует результат поиска в юридической базе
-     * @param {Object} searchResult - Результат поиска
-     * @returns {string} - Отформатированный результат
-     */
-    static formatLegalSearchResult(searchResult) {
-        if (!searchResult) {
-            return 'No legal information found\n';
-        }
-
-        let formattedOutput = 'Legal Search Results:\n\n';
-
-        if (searchResult.query) {
-            formattedOutput += `Query: ${searchResult.query}\n\n`;
-        }
-
-        if (searchResult.results && searchResult.results.length > 0) {
-            searchResult.results.forEach((result, index) => {
-                formattedOutput += `${index + 1}. ${result.title || 'No title'}\n`;
-                if (result.description) {
-                    formattedOutput += `   ${result.description}\n`;
-                }
-                if (result.date) {
-                    formattedOutput += `   Date: ${result.date}\n`;
-                }
-                formattedOutput += '\n';
-            });
-        } else {
-            formattedOutput += 'No results found\n';
-        }
-
-        return formattedOutput;
-    }
-
-    /**
-     * Обрезает длинный текст
-     * @param {string} text - Исходный текст
-     * @param {number} maxLength - Максимальная длина
-     * @returns {string} - Обрезанный текст
-     */
-    static truncateText(text, maxLength = 2000) {
-        if (!text || text.length <= maxLength) {
-            return text;
-        }
-
-        return `${text.substring(0, maxLength)}...\n\n[Text truncated for brevity]`;
-    }
+    return formatted;
 }
 
-module.exports = OutputFormatter;
+/**
+ * Formats network command result
+ * @param {string} command - Command name
+ * @param {Object} result - Command result
+ * @returns {string} - Formatted result
+ */
+function formatNetworkResult(command, result) {
+    if (!result.success) {
+        return `❌ ${command.toUpperCase()} failed: ${result.error}`;
+    }
+
+    let formatted = `🌐 ${command.toUpperCase()} RESULT\n`;
+    formatted += `==========================================\n\n`;
+    formatted += result.output || 'No output available';
+
+    return formatted;
+}
+
+/**
+ * Formats system information
+ * @param {Object} systemInfo - System information
+ * @returns {string} - Formatted result
+ */
+function formatSystemInfo(systemInfo) {
+    let formatted = `💻 SYSTEM INFORMATION\n`;
+    formatted += `==========================================\n\n`;
+    
+    if (systemInfo.platform) {
+        formatted += `🖥️  Platform: ${systemInfo.platform}\n`;
+    }
+    
+    if (systemInfo.arch) {
+        formatted += `🏗️  Architecture: ${systemInfo.arch}\n`;
+    }
+    
+    if (systemInfo.nodeVersion) {
+        formatted += `📦 Node.js: ${systemInfo.nodeVersion}\n`;
+    }
+    
+    if (systemInfo.uptime) {
+        formatted += `⏱️  Uptime: ${systemInfo.uptime}\n`;
+    }
+    
+    if (systemInfo.memory) {
+        formatted += `💾 Memory: ${systemInfo.memory.used} / ${systemInfo.memory.total} MB\n`;
+    }
+    
+    if (systemInfo.cpu) {
+        formatted += `🖥️  CPU: ${systemInfo.cpu.model} (${systemInfo.cpu.cores} cores)\n`;
+    }
+
+    return formatted;
+}
+
+/**
+ * Formats error message
+ * @param {Error} error - Error object
+ * @param {string} context - Error context
+ * @returns {string} - Formatted error
+ */
+function formatError(error, context = '') {
+    let formatted = `❌ ERROR`;
+    if (context) {
+        formatted += ` (${context})`;
+    }
+    formatted += `\n==========================================\n\n`;
+    formatted += `Message: ${error.message}\n`;
+    
+    if (error.stack) {
+        formatted += `\nStack trace:\n${error.stack}\n`;
+    }
+
+    return formatted;
+}
+
+/**
+ * Formats success message
+ * @param {string} message - Success message
+ * @param {Object} data - Additional data
+ * @returns {string} - Formatted success message
+ */
+function formatSuccess(message, data = {}) {
+    let formatted = `✅ SUCCESS\n`;
+    formatted += `==========================================\n\n`;
+    formatted += `${message}\n`;
+    
+    if (Object.keys(data).length > 0) {
+        formatted += `\nAdditional data:\n`;
+        for (const [key, value] of Object.entries(data)) {
+            formatted += `  ${key}: ${value}\n`;
+        }
+    }
+
+    return formatted;
+}
+
+/**
+ * Formats help information
+ * @param {Array} commands - Available commands
+ * @returns {string} - Formatted help
+ */
+function formatHelp(commands) {
+    let formatted = `📚 AVAILABLE COMMANDS\n`;
+    formatted += `==========================================\n\n`;
+    
+    commands.forEach(command => {
+        formatted += `🔹 ${command.name}\n`;
+        if (command.description) {
+            formatted += `   ${command.description}\n`;
+        }
+        if (command.usage) {
+            formatted += `   Usage: ${command.usage}\n`;
+        }
+        formatted += `\n`;
+    });
+
+    return formatted;
+}
+
+/**
+ * Formats MOTD (Message of the Day)
+ * @param {string} message - MOTD message
+ * @param {Object} options - Formatting options
+ * @returns {string} - Formatted MOTD
+ */
+function formatMOTD(message, options = {}) {
+    const {
+        showTimestamp = true,
+        showBorder = true,
+        maxWidth = 80
+    } = options;
+
+    let formatted = '';
+    
+    if (showBorder) {
+        formatted += `╔${'═'.repeat(maxWidth - 2)}╗\n`;
+    }
+    
+    formatted += `║ ${'MESSAGE OF THE DAY'.padEnd(maxWidth - 4)} ║\n`;
+    
+    if (showBorder) {
+        formatted += `╠${'═'.repeat(maxWidth - 2)}╣\n`;
+    }
+    
+    // Split message into lines that fit within maxWidth
+    const words = message.split(' ');
+    let currentLine = '';
+    const lines = [];
+    
+    words.forEach(word => {
+        if ((currentLine + word).length <= maxWidth - 6) {
+            currentLine += (currentLine ? ' ' : '') + word;
+        } else {
+            if (currentLine) lines.push(currentLine);
+            currentLine = word;
+        }
+    });
+    if (currentLine) lines.push(currentLine);
+    
+    lines.forEach(line => {
+        formatted += `║ ${line.padEnd(maxWidth - 4)} ║\n`;
+    });
+    
+    if (showTimestamp) {
+        const timestamp = new Date().toLocaleString();
+        formatted += `║ ${timestamp.padEnd(maxWidth - 4)} ║\n`;
+    }
+    
+    if (showBorder) {
+        formatted += `╚${'═'.repeat(maxWidth - 2)}╝\n`;
+    }
+    
+    return formatted;
+}
+
+module.exports = {
+    formatLegalSearchResult,
+    formatNetworkResult,
+    formatSystemInfo,
+    formatError,
+    formatSuccess,
+    formatHelp,
+    formatMOTD
+};

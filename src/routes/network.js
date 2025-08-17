@@ -29,22 +29,51 @@ router.post('/ping',
     SecurityMiddleware.rateLimiter,
     Validators.createValidationMiddleware(hostnameSchema),
     async(req, res) => {
-        try {
-            const { hostname } = req.validatedBody;
-            const result = await NetworkService.ping(hostname);
-            res.json(result);
-        } catch (error) {
-            logError('Ping command failed', {
+        // Handle request abortion
+        req.on('aborted', () => {
+            logInfo('Ping request aborted by client', {
                 hostname: req.validatedBody?.hostname,
-                error: error.message,
                 ip: req.ip
             });
+        });
+        
+        try {
+            const { hostname } = req.validatedBody;
             
-            res.status(500).json({ 
-                error: 'Ping command failed',
-                details: error.message,
-                timestamp: new Date().toISOString()
-            });
+            // Check if request was aborted
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            const result = await NetworkService.ping(hostname);
+            
+            // Check again before sending response
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            res.json(result);
+        } catch (error) {
+            // Don't log if request was aborted
+            if (!req.aborted) {
+                logError('Ping command failed', {
+                    hostname: req.validatedBody?.hostname,
+                    error: error.message,
+                    ip: req.ip
+                });
+                
+                res.status(500).json({ 
+                    error: 'Ping command failed',
+                    details: error.message,
+                    timestamp: new Date().toISOString()
+                });
+            }
         }
     }
 );
@@ -56,22 +85,51 @@ router.post('/traceroute',
     SecurityMiddleware.rateLimiter,
     Validators.createValidationMiddleware(hostnameSchema),
     async(req, res) => {
-        try {
-            const { hostname } = req.validatedBody;
-            const result = await NetworkService.traceroute(hostname);
-            res.json(result);
-        } catch (error) {
-            logError('Traceroute command failed', {
+        // Handle request abortion
+        req.on('aborted', () => {
+            logInfo('Traceroute request aborted by client', {
                 hostname: req.validatedBody?.hostname,
-                error: error.message,
                 ip: req.ip
             });
+        });
+        
+        try {
+            const { hostname } = req.validatedBody;
             
-            res.status(500).json({ 
-                error: 'Traceroute command failed',
-                details: error.message,
-                timestamp: new Date().toISOString()
-            });
+            // Check if request was aborted
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            const result = await NetworkService.traceroute(hostname);
+            
+            // Check again before sending response
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            res.json(result);
+        } catch (error) {
+            // Don't log if request was aborted
+            if (!req.aborted) {
+                logError('Traceroute command failed', {
+                    hostname: req.validatedBody?.hostname,
+                    error: error.message,
+                    ip: req.ip
+                });
+                
+                res.status(500).json({ 
+                    error: 'Traceroute command failed',
+                    details: error.message,
+                    timestamp: new Date().toISOString()
+                });
+            }
         }
     }
 );

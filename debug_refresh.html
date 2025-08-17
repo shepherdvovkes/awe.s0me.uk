@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Refresh</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .debug-info {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug Refresh Functionality</h1>
+    
+    <div class="debug-info">
+        <h2>Текущее состояние:</h2>
+        <div id="currentState"></div>
+    </div>
+    
+    <div class="debug-info">
+        <h2>Лог событий:</h2>
+        <div id="log"></div>
+    </div>
+    
+    <div class="debug-info">
+        <h2>Тесты:</h2>
+        <button class="button" onclick="testHardRefresh()">Test Hard Refresh</button>
+        <button class="button" onclick="testNormalRefresh()">Test Normal Refresh</button>
+        <button class="button" onclick="clearCache()">Clear Cache</button>
+        <button class="button" onclick="openTerminal()">Open Terminal</button>
+    </div>
+    
+    <script>
+        let logCount = 0;
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logCount++;
+            logDiv.innerHTML += `<div class="log">[${timestamp}] ${logCount}: ${message}</div>`;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function updateState() {
+            const stateDiv = document.getElementById('currentState');
+            const urlParams = new URLSearchParams(window.location.search);
+            const isHardRefresh = urlParams.get('hardRefresh') === 'true';
+            const hasVisited = sessionStorage.getItem('hasVisited');
+            
+            stateDiv.innerHTML = `
+                <p><strong>URL:</strong> ${window.location.href}</p>
+                <p><strong>hardRefresh parameter:</strong> ${isHardRefresh ? 'true' : 'false'}</p>
+                <p><strong>hasVisited in sessionStorage:</strong> ${hasVisited ? 'true' : 'false'}</p>
+                <p><strong>Is first visit:</strong> ${!hasVisited ? 'true' : 'false'}</p>
+                <p><strong>Should show animation:</strong> ${isHardRefresh || !hasVisited ? 'true' : 'false'}</p>
+            `;
+        }
+        
+        function testHardRefresh() {
+            log('Testing hard refresh...');
+            const currentUrl = new URL(window.location);
+            currentUrl.searchParams.set('hardRefresh', 'true');
+            log(`Setting URL to: ${currentUrl.toString()}`);
+            window.location.href = currentUrl.toString();
+        }
+        
+        function testNormalRefresh() {
+            log('Testing normal refresh...');
+            const currentUrl = new URL(window.location);
+            currentUrl.searchParams.delete('hardRefresh');
+            log(`Clearing hardRefresh parameter, URL: ${currentUrl.toString()}`);
+            sessionStorage.setItem('hasVisited', 'true');
+            log('Set hasVisited to true');
+            updateState();
+        }
+        
+        function clearCache() {
+            log('Clearing sessionStorage...');
+            sessionStorage.clear();
+            log('sessionStorage cleared');
+            updateState();
+        }
+        
+        function openTerminal() {
+            log('Opening terminal...');
+            window.open('http://localhost:3001', '_blank');
+        }
+        
+        // Global keyboard event handler for refresh
+        document.addEventListener('keydown', function(e) {
+            // Handle Command+Shift+R for hard refresh
+            if (e.metaKey && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                log('Cmd+Shift+R detected - setting hardRefresh parameter');
+                // Add hardRefresh parameter to URL and reload
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.set('hardRefresh', 'true');
+                log(`Setting URL to: ${currentUrl.toString()}`);
+                window.location.href = currentUrl.toString();
+            }
+            // Handle F5 or Command+R for normal refresh
+            if (e.key === 'F5' || (e.metaKey && e.key === 'r' && !e.shiftKey)) {
+                log('F5 or Cmd+R detected - clearing hardRefresh parameter');
+                // Remove hardRefresh parameter if it exists
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.delete('hardRefresh');
+                if (currentUrl.search !== window.location.search) {
+                    log(`Updating URL to: ${currentUrl.toString()}`);
+                    window.history.replaceState({}, document.title, currentUrl.toString());
+                }
+            }
+        });
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Page loaded');
+            log(`Initial URL: ${window.location.href}`);
+            log(`Initial sessionStorage.hasVisited: ${sessionStorage.getItem('hasVisited')}`);
+            updateState();
+        });
+        
+        // Update state when URL changes
+        window.addEventListener('popstate', function() {
+            log('URL changed via popstate');
+            updateState();
+        });
+    </script>
+</body>
+</html> 

@@ -200,7 +200,7 @@
         
         /* Autocomplete styles */
         .autocomplete-container {
-            position: absolute;
+            position: fixed;
             background: #000;
             border: 1px solid #33ff33;
             max-height: 200px;
@@ -212,13 +212,29 @@
             box-shadow: 
                 0 0 10px rgba(51, 255, 51, 0.3),
                 0 0 20px rgba(51, 255, 51, 0.1);
+            min-width: 300px;
+        }
+        
+        .autocomplete-header {
+            padding: 8px 12px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #33ff33;
+            font-weight: bold;
+            color: #33ff33;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
         .autocomplete-suggestion {
             padding: 8px 12px;
             cursor: pointer;
-            border-bottom: 1px solid #1a1a1a;
             transition: background-color 0.2s ease;
+            border-right: 1px solid #1a1a1a;
+            border-bottom: 1px solid #1a1a1a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .autocomplete-suggestion:hover,
@@ -707,6 +723,33 @@
             50% { opacity: 1; }
         }
         
+        /* Logo container and spinning animation */
+        .logo-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            width: 80px;
+            height: 80px;
+        }
+        
+        .spinning-logo {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            animation: spinX 4s linear infinite;
+            filter: drop-shadow(0 0 10px rgba(51, 255, 51, 0.8));
+        }
+        
+        @keyframes spinX {
+            0% {
+                transform: rotateX(0deg);
+            }
+            100% {
+                transform: rotateX(360deg);
+            }
+        }
+        
         /* Mobile responsive */
         @media (max-width: 768px) {
             .crt-monitor {
@@ -727,6 +770,13 @@
                 width: 90%;
                 max-width: 300px;
             }
+            
+            .logo-container {
+                width: 60px;
+                height: 60px;
+                top: 15px;
+                right: 15px;
+            }
         }
         
         @media (min-width: 769px) {
@@ -745,14 +795,6 @@
     <!-- Tunnel Animation -->
     <div class="tunnel-animation" id="tunnelAnimation">
         <div class="tunnel-container">
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
-            <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
             <div class="tunnel-ring"></div>
@@ -805,6 +847,11 @@
                         <div>Login TTY: /dev/tty03 at 300 baud</div>
                         <div>Login: Mon Aug  4 14:30:21 PDT 1975</div>
                         <div></div>
+                    </div>
+                    
+                    <!-- Logo in top right corner with spinning animation -->
+                    <div class="logo-container">
+                        <img src="logo/logogreen_nobg.png" alt="Logo" class="spinning-logo">
                     </div>
                     
                     <div class="terminal-output" id="output">
@@ -1427,9 +1474,19 @@ SYSTEM COMMANDS:
 motd        matrix      oscilloscope    screensaver
 history     autocomplete    commands
 
+EMULATION COMMANDS:
+run asm     run pascal  run dos     run qemu
+run ssh     run help
+
 API COMMANDS:
 show api connections    show api con
 show motd db
+
+DOCUMENTATION COMMANDS:
+show readme legal       show readme api
+show readme emulation   show readme security
+show readme performance show readme docker
+show readme deployment  show readme testing
 
 AI ASSISTANT:
 Unknown commands are automatically processed by AI
@@ -1466,6 +1523,23 @@ sudo <command>      - Execute with privileges`;
                 
                 helpText += `
 
+EMULATION TOOLS:
+run asm <file>      - NASM Assembler compilation
+run pascal <file>   - Free Pascal compilation
+run dos <command>   - DOSBox emulation
+run qemu <command>  - QEMU system emulation
+run ssh <command>   - SSH container access
+
+DOCUMENTATION:
+show readme legal       - Legal database integration
+show readme api         - API endpoints reference
+show readme emulation   - Docker emulation system
+show readme security    - Security features
+show readme performance - Performance optimizations
+show readme docker      - Docker configuration
+show readme deployment  - Deployment guide
+show readme testing     - Testing procedures
+
 USAGE EXAMPLES:
 • help                    - Show this help
 • ls /usr/bin            - List directory contents
@@ -1474,6 +1548,13 @@ USAGE EXAMPLES:
 • history                - Show command history
 • autocomplete           - Autocomplete info
 • commands               - List all commands
+• run asm help           - Assembler help
+• run pascal help        - Pascal help
+• run dos help           - DOS help
+• run qemu help          - QEMU help
+• run ssh help           - SSH help
+• show readme legal      - Legal database docs
+• show readme api        - API documentation
 
 SPECIAL FEATURES:
 • Retro CRT monitor effects
@@ -1483,6 +1564,9 @@ SPECIAL FEATURES:
 • AI-powered unknown command processing
 • Legal database integration
 • Docker emulation support
+• SSH container access
+• CRT-style output formatting
+• Comprehensive documentation system
 
 TOTAL COMMANDS:
 ${getAllAvailableCommands().length} commands available`;
@@ -1918,6 +2002,38 @@ Admin Commands:
                 }
                 const command = args[0];
                 return `Executing with elevated privileges: ${command}`;
+            },
+            
+            'show readme legal': () => {
+                return showReadmeSection('legal');
+            },
+            
+            'show readme api': () => {
+                return showReadmeSection('api');
+            },
+            
+            'show readme emulation': () => {
+                return showReadmeSection('emulation');
+            },
+            
+            'show readme security': () => {
+                return showReadmeSection('security');
+            },
+            
+            'show readme performance': () => {
+                return showReadmeSection('performance');
+            },
+            
+            'show readme docker': () => {
+                return showReadmeSection('docker');
+            },
+            
+            'show readme deployment': () => {
+                return showReadmeSection('deployment');
+            },
+            
+            'show readme testing': () => {
+                return showReadmeSection('testing');
             }
         };
         
@@ -2158,6 +2274,7 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
         let autocompleteSuggestions = [];
         let currentSuggestionIndex = -1;
         let isAutocompleteActive = false;
+        let lastTabTime = 0;
 
         // Get all available commands including admin commands
         function getAllAvailableCommands() {
@@ -2166,7 +2283,11 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 'clear', 'date', 'who', 'uname', 'ls', 'pwd', 'logout',
                 'motd', 'matrix', 'oscilloscope', 'screensaver',
                 'show api connections', 'show api con', 'show motd db',
-                'cd', 'cat', 'echo', 'history', 'autocomplete', 'commands'
+                'show readme legal', 'show readme api', 'show readme emulation',
+                'show readme security', 'show readme performance', 'show readme docker',
+                'show readme deployment', 'show readme testing',
+                'cd', 'cat', 'echo', 'history', 'autocomplete', 'commands',
+                'run'
             ];
             
             const adminCommands = [
@@ -2196,33 +2317,112 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 'cat': ['README', '.profile', 'startup'],
                 'ls': ['/', '/usr', '/usr/bin', '/etc', '/var'],
                 'echo': ['Hello World', 'UNIX/32V', 'PDP-11/70'],
-                'sudo': getAllAvailableCommands().filter(cmd => cmd !== 'sudo')
+                'sudo': getAllAvailableCommands().filter(cmd => cmd !== 'sudo'),
+                'run': ['asm', 'pascal', 'dos', 'qemu', 'ssh', 'help'],
+                'show readme': ['legal', 'api', 'emulation', 'security', 'performance', 'docker', 'deployment', 'testing']
             };
             return argsMap[commandName] || [];
         }
 
-        // Smart autocomplete that handles both commands and arguments
+        // Smart autocomplete that handles both commands and arguments with fuzzy matching
         function smartAutocomplete(input) {
             const parts = input.trim().split(/\s+/);
             
             if (parts.length === 1) {
-                // Autocomplete command
-                return findMatchingCommands(parts[0]);
+                // Autocomplete command with fuzzy matching
+                const partial = parts[0];
+                const allCommands = getAllAvailableCommands();
+                
+                // First try exact prefix matches
+                let exactMatches = allCommands.filter(cmd => 
+                    cmd.toLowerCase().startsWith(partial.toLowerCase())
+                );
+                
+                // If no exact matches, try fuzzy matching
+                if (exactMatches.length === 0 && partial.length > 1) {
+                    exactMatches = allCommands.filter(cmd => 
+                        fuzzyMatch(cmd.toLowerCase(), partial.toLowerCase())
+                    );
+                }
+                
+                return exactMatches;
             } else if (parts.length === 2) {
                 // Autocomplete argument for command
                 const command = parts[0];
                 const partialArg = parts[1];
                 const possibleArgs = getCommandArguments(command);
                 
-                return possibleArgs.filter(arg => 
+                // Try exact matches first
+                let matches = possibleArgs.filter(arg => 
                     arg.toLowerCase().startsWith(partialArg.toLowerCase())
-                ).map(arg => `${command} ${arg}`);
+                );
+                
+                // If no exact matches, try fuzzy matching
+                if (matches.length === 0 && partialArg.length > 1) {
+                    matches = possibleArgs.filter(arg => 
+                        fuzzyMatch(arg.toLowerCase(), partialArg.toLowerCase())
+                    );
+                }
+                
+                return matches.map(arg => `${command} ${arg}`);
+            } else if (parts.length === 3 && parts[0] === 'run') {
+                // Autocomplete subcommand for run
+                const subcommand = parts[1];
+                const partialSubArg = parts[2];
+                
+                const runSubArgs = {
+                    'asm': ['help', 'sample', 'compile', 'execute', 'hello.asm', 'add.asm', 'factorial.asm'],
+                    'pascal': ['help', 'sample', 'compile', 'execute', 'hello.pas', 'calculator.pas', 'factorial.pas'],
+                    'dos': ['help', 'dir', 'type', 'echo', 'cls'],
+                    'qemu': ['help', 'info', 'exit'],
+                    'ssh': ['help', 'ls', 'pwd', 'cd', 'cat', 'echo', 'clear']
+                };
+                
+                const possibleSubArgs = runSubArgs[subcommand] || [];
+                let matches = possibleSubArgs.filter(arg => 
+                    arg.toLowerCase().startsWith(partialSubArg.toLowerCase())
+                );
+                
+                if (matches.length === 0 && partialSubArg.length > 1) {
+                    matches = possibleSubArgs.filter(arg => 
+                        fuzzyMatch(arg.toLowerCase(), partialSubArg.toLowerCase())
+                    );
+                }
+                
+                return matches.map(arg => `run ${subcommand} ${arg}`);
+            } else if (parts.length === 3 && parts[0] === 'show' && parts[1] === 'readme') {
+                // Autocomplete documentation section
+                const partialSection = parts[2];
+                const sections = ['legal', 'api', 'emulation', 'security', 'performance', 'docker', 'deployment', 'testing'];
+                
+                let matches = sections.filter(section => 
+                    section.toLowerCase().startsWith(partialSection.toLowerCase())
+                );
+                
+                if (matches.length === 0 && partialSection.length > 1) {
+                    matches = sections.filter(section => 
+                        fuzzyMatch(section.toLowerCase(), partialSection.toLowerCase())
+                    );
+                }
+                
+                return matches.map(section => `show readme ${section}`);
             }
             
             return [];
         }
+        
+        // Fuzzy matching function for better autocomplete
+        function fuzzyMatch(str, pattern) {
+            let patternIndex = 0;
+            for (let i = 0; i < str.length && patternIndex < pattern.length; i++) {
+                if (str[i] === pattern[patternIndex]) {
+                    patternIndex++;
+                }
+            }
+            return patternIndex === pattern.length;
+        }
 
-        // Show autocomplete suggestions
+        // Show autocomplete suggestions in Fish shell style
         function showAutocompleteSuggestions(suggestions) {
             // Remove existing suggestions
             const existingSuggestions = document.querySelectorAll('.autocomplete-container');
@@ -2230,36 +2430,60 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
             
             if (suggestions.length === 0) return;
             
-            // Create suggestions container
+            // Calculate position - move up by 2-3 lines to show above current line
+            const inputRect = commandInput.getBoundingClientRect();
+            const containerHeight = Math.min(suggestions.length * 25 + 40, 200); // 25px per item + header
+            
+            // Create suggestions container positioned above input
             const suggestionsContainer = document.createElement('div');
             suggestionsContainer.className = 'autocomplete-container';
             suggestionsContainer.style.cssText = `
-                position: absolute;
-                top: ${commandInput.offsetTop + commandInput.offsetHeight}px;
-                left: ${commandInput.offsetLeft}px;
+                position: fixed;
+                top: ${inputRect.top - containerHeight - 10}px;
+                left: ${inputRect.left}px;
                 background: #000;
                 border: 1px solid #33ff33;
-                max-height: 200px;
+                max-height: ${containerHeight}px;
                 overflow-y: auto;
                 z-index: 1000;
                 font-family: 'IBM Plex Mono', monospace;
                 font-size: 14px;
                 color: #33ff33;
-                min-width: ${commandInput.offsetWidth}px;
+                box-shadow: 
+                    0 0 10px rgba(51, 255, 51, 0.3),
+                    0 0 20px rgba(51, 255, 51, 0.1);
+                min-width: ${Math.max(inputRect.width, 300)}px;
             `;
             
-            // Add header with count
+            // Add header with count and navigation info
             const headerEl = document.createElement('div');
             headerEl.className = 'autocomplete-header';
-            headerEl.textContent = `Suggestions (${suggestions.length}):`;
+            headerEl.innerHTML = `
+                <span>Suggestions (${suggestions.length}):</span>
+                <span style="float: right; font-size: 12px; opacity: 0.7;">
+                    TAB: cycle | ↑↓: navigate | ESC: cancel
+                </span>
+            `;
             headerEl.style.cssText = `
-                padding: 5px 10px;
+                padding: 8px 12px;
                 background: #1a1a1a;
                 border-bottom: 1px solid #33ff33;
                 font-weight: bold;
                 color: #33ff33;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
             `;
             suggestionsContainer.appendChild(headerEl);
+            
+            // Create grid layout for better visual organization
+            const suggestionsGrid = document.createElement('div');
+            suggestionsGrid.style.cssText = `
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1px;
+                background: #1a1a1a;
+            `;
             
             suggestions.forEach((suggestion, index) => {
                 const suggestionEl = document.createElement('div');
@@ -2268,9 +2492,13 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 suggestionEl.style.cssText = `
                     padding: 8px 12px;
                     cursor: pointer;
-                    border-bottom: 1px solid #1a1a1a;
                     background: ${index === currentSuggestionIndex ? '#1a3a1a' : 'transparent'};
                     transition: background-color 0.2s ease;
+                    border-right: 1px solid #1a1a1a;
+                    border-bottom: 1px solid #1a1a1a;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 `;
                 
                 suggestionEl.addEventListener('click', () => {
@@ -2287,14 +2515,21 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                     currentSuggestionIndex = index;
                 });
                 
-                suggestionsContainer.appendChild(suggestionEl);
+                suggestionsGrid.appendChild(suggestionEl);
             });
             
+            suggestionsContainer.appendChild(suggestionsGrid);
             document.body.appendChild(suggestionsContainer);
             
             // Add visual indicator to input
             commandInput.style.borderColor = '#33ff33';
             commandInput.style.boxShadow = '0 0 5px rgba(51, 255, 51, 0.5)';
+            
+            // Scroll to show the container if it goes off screen
+            const containerRect = suggestionsContainer.getBoundingClientRect();
+            if (containerRect.top < 0) {
+                suggestionsContainer.style.top = '10px';
+            }
         }
 
         // Hide autocomplete suggestions
@@ -2309,7 +2544,7 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
             commandInput.style.boxShadow = '';
         }
 
-        // Apply autocomplete
+        // Apply autocomplete with Fish shell behavior
         function applyAutocomplete() {
             const input = commandInput.value;
             const suggestions = smartAutocomplete(input);
@@ -2321,18 +2556,47 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 // Play completion sound
                 playAutocompleteSound('complete');
             } else if (suggestions.length > 1) {
-                // Multiple matches - show suggestions
+                // Multiple matches - show suggestions in Fish style
                 currentSuggestionIndex = 0;
                 isAutocompleteActive = true;
                 autocompleteSuggestions = suggestions;
                 showAutocompleteSuggestions(suggestions);
                 // Play suggestion sound
                 playAutocompleteSound('suggest');
+                
+                // Show current input with partial completion
+                const commonPrefix = findCommonPrefix(suggestions);
+                if (commonPrefix && commonPrefix.length > input.length) {
+                    commandInput.value = commonPrefix;
+                    // Position cursor at the end
+                    commandInput.setSelectionRange(commonPrefix.length, commonPrefix.length);
+                }
             } else {
                 hideAutocompleteSuggestions();
                 // Play no match sound
                 playAutocompleteSound('nomatch');
             }
+        }
+        
+        // Find common prefix for partial completion
+        function findCommonPrefix(strings) {
+            if (strings.length === 0) return '';
+            if (strings.length === 1) return strings[0];
+            
+            const first = strings[0];
+            let prefix = '';
+            
+            for (let i = 0; i < first.length; i++) {
+                const char = first[i];
+                for (let j = 1; j < strings.length; j++) {
+                    if (strings[j][i] !== char) {
+                        return prefix;
+                    }
+                }
+                prefix += char;
+            }
+            
+            return prefix;
         }
 
         // Play autocomplete sounds (using Web Audio API)
@@ -2352,6 +2616,12 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                         break;
                     case 'suggest':
                         oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+                        break;
+                    case 'interrupt':
+                        oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.2);
+                        break;
                         oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.05);
                         break;
                     case 'nomatch':
@@ -2394,7 +2664,19 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                 originalInput = '';
             } else if (e.key === 'Tab') {
                 e.preventDefault();
-                if (isAutocompleteActive && autocompleteSuggestions.length > 1) {
+                e.stopPropagation();
+                
+                // Check for double TAB (show all commands)
+                const now = Date.now();
+                if (now - lastTabTime < 300) { // Double TAB within 300ms
+                    // Show all available commands
+                    const allCommands = getAllAvailableCommands();
+                    currentSuggestionIndex = 0;
+                    isAutocompleteActive = true;
+                    autocompleteSuggestions = allCommands;
+                    showAutocompleteSuggestions(allCommands);
+                    playAutocompleteSound('suggest');
+                } else if (isAutocompleteActive && autocompleteSuggestions.length > 1) {
                     // Cycle through suggestions
                     currentSuggestionIndex = (currentSuggestionIndex + 1) % autocompleteSuggestions.length;
                     showAutocompleteSuggestions(autocompleteSuggestions);
@@ -2402,7 +2684,9 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                     // Apply autocomplete
                     applyAutocomplete();
                 }
+                lastTabTime = now;
             } else if (e.key === 'Escape') {
+                e.preventDefault();
                 hideAutocompleteSuggestions();
                 currentHistoryIndex = -1;
                 originalInput = '';
@@ -2438,6 +2722,30 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
                         this.value = originalInput;
                     }
                 }
+            } else if (e.ctrlKey && e.key === 'c') {
+                // Handle Ctrl+C to interrupt command
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Clear current input
+                this.value = '';
+                
+                // Add interrupt message to output
+                const interruptLine = document.createElement('div');
+                interruptLine.className = 'output-line';
+                interruptLine.innerHTML = `<span class="error">^C</span>`;
+                output.appendChild(interruptLine);
+                
+                // Hide any active autocomplete
+                hideAutocompleteSuggestions();
+                currentHistoryIndex = -1;
+                originalInput = '';
+                
+                // Play interrupt sound
+                playAutocompleteSound('interrupt');
+                
+                // Ensure focus stays on input
+                setTimeout(() => this.focus(), 10);
             } else {
                 // Reset autocomplete state when typing
                 if (isAutocompleteActive) {
@@ -2983,9 +3291,35 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
             loginScreen.style.display = 'none';
             terminalContainer.style.display = 'none';
             
-            console.log('Starting startup animation...');
-            // Start the startup animation
-            startStartupAnimation();
+            // Check if this is a Command+Shift+refresh (hard refresh) or manual URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const isHardRefresh = urlParams.get('hardRefresh') === 'true';
+            const isFirstVisit = !sessionStorage.getItem('hasVisited');
+            
+            // Set visited flag
+            sessionStorage.setItem('hasVisited', 'true');
+            
+            if (isHardRefresh || isFirstVisit) {
+                console.log('Hard refresh or first visit detected - starting full animation...');
+                // Remove the parameter from URL without reloading
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+                // Start the startup animation
+                startStartupAnimation();
+            } else {
+                console.log('Normal refresh detected - skipping animation...');
+                // Skip animation and go directly to terminal
+                const startupAnimation = document.getElementById('startupAnimation');
+                const tunnelAnimation = document.getElementById('tunnelAnimation');
+                startupAnimation.style.display = 'none';
+                tunnelAnimation.style.display = 'none';
+                
+                // Show terminal container directly
+                terminalContainer.style.display = 'flex';
+                
+                // Initialize the terminal silently (without boot messages)
+                initTerminalSilent(false);
+            }
         });
         
         // Function to update ZShell-like prompt
@@ -2994,6 +3328,27 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
             const symbol = window.isAdmin ? '#' : '$';
             promptSymbol.textContent = `${currentUser}@${currentHost}:${currentDir} ${symbol}`;
         }
+        
+        // Global keyboard event handler for refresh
+        document.addEventListener('keydown', function(e) {
+            // Handle Command+Shift+R for hard refresh
+            if (e.metaKey && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                // Add hardRefresh parameter to URL and reload
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.set('hardRefresh', 'true');
+                window.location.href = currentUrl.toString();
+            }
+            // Handle F5 or Command+R for normal refresh (ensure no hardRefresh parameter)
+            if (e.key === 'F5' || (e.metaKey && e.key === 'r' && !e.shiftKey)) {
+                // Remove hardRefresh parameter if it exists
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.delete('hardRefresh');
+                if (currentUrl.search !== window.location.search) {
+                    window.history.replaceState({}, document.title, currentUrl.toString());
+                }
+            }
+        });
         
         // Terminal initialization function (without boot messages for startup animation)
         function initTerminalSilent(isAdmin = false) {
@@ -3265,6 +3620,423 @@ Uptime: ${Math.floor(data.uptime)} seconds`;
         
         // Prevent context menu
         document.addEventListener('contextmenu', e => e.preventDefault());
+
+        // README Documentation Sections
+        const readmeSections = {
+            legal: `## Legal Database Integration
+
+The system includes full integration with the Ukrainian legal database "Закон Онлайн" API for searching court decisions and legal information.
+
+### Features
+
+- **Automatic Detection**: System automatically detects legal requests and activates search
+- **Two-Stage Search**: Metadata search followed by full text retrieval
+- **Query Extraction**: Intelligent extraction of search queries from Ukrainian legal text
+- **Database Storage**: All search results are stored in local database
+- **Statistics**: Track search history and popular queries
+- **Filtering**: Search by court, judgment form, and justice kind
+
+### Ukrainian Legal Keywords
+
+The system recognizes Ukrainian legal terms with weights:
+
+- **High Priority (9-10)**: житло, мешканець, реєстрація місця проживання, колишній мешканець
+- **Medium Priority (7-8)**: приватизація, власник, виселення, право власності
+- **Low Priority (5-6)**: адвокат, юрист, судова практика
+
+### Usage Examples
+
+# Search for housing-related cases
+"найди судові справи про виселення з житла"
+
+# Search for inheritance cases  
+"потрібна юридична консультація щодо спадщини"
+
+# Get court practice
+"надати судову практику по житлових питаннях"
+
+### API Configuration
+
+To use the legal database features, set the ZAKON_TOKEN environment variable:
+
+ZAKON_TOKEN=your_zakon_online_api_token_here`,
+
+            api: `## API Endpoints
+
+### Core Endpoints
+
+- POST /api/ping - Network ping
+- POST /api/traceroute - Network path tracing
+- POST /api/nslookup - DNS lookup
+- POST /api/whois - Domain information
+- POST /api/netstat - Network statistics
+- POST /api/motd - Generate MOTD
+- POST /api/process-command - Process unknown commands
+- GET /api/system - System information
+- GET /api/health - Health check
+
+### AI Endpoints
+
+- POST /api/detect-legal - Detect legal requests
+- POST /api/legal-search - Search legal database
+- POST /api/court-cases - Process court case requests
+- POST /api/tcc - Process TCC requests
+
+### Legal Database Endpoints (Закон Онлайн)
+
+- GET /api/zakon-online/search - Search legal database
+- GET /api/zakon-online/courts - Get courts list
+- GET /api/zakon-online/judgment-forms - Get judgment forms
+- GET /api/zakon-online/justice-kinds - Get justice kinds
+- GET /api/zakon-online/history - Search history
+- GET /api/zakon-online/stats - Search statistics
+- GET /api/zakon-online/top-searches - Top search queries
+- GET /api/zakon-online/search/:id - Search details
+
+### Docker Emulation Endpoints
+
+- POST /api/docker/assembler - Compile and run assembly code
+- POST /api/docker/pascal - Compile and run Pascal code
+- POST /api/docker/dos - Run DOS program
+- POST /api/docker/qemu - Run QEMU emulation
+- GET /api/docker/files - List workspace files
+- POST /api/docker/sample - Create sample program
+- GET /api/docker/status - Container status
+
+### History & Statistics
+
+- GET /api/motd/history - MOTD history
+- GET /api/openai/history - OpenAI requests history
+- GET /api/commands - Available commands
+- GET /api/status - AI service status`,
+
+            emulation: `## Docker Emulation System
+
+The system provides comprehensive emulation of classic development environments through Docker containers.
+
+### Available Emulators
+
+#### NASM Assembler
+- **Features**: Full x86 instruction set emulation, ELF64 output format, automatic linking
+- **Usage**: POST /api/docker/assembler
+- **Sample**: Hello World assembly program
+
+#### Free Pascal Compiler
+- **Features**: Turbo Pascal compatibility, modern capabilities, cross-platform
+- **Usage**: POST /api/docker/pascal
+- **Sample**: Hello World Pascal program
+
+#### DOSBox
+- **Features**: DOS environment emulation, old games and programs support
+- **Usage**: POST /api/docker/dos
+- **Configuration**: Custom dosbox.conf
+
+#### QEMU
+- **Features**: Full OS emulation, multiple architectures, KVM virtualization
+- **Usage**: POST /api/docker/qemu
+- **Support**: FreeDOS, Linux, Windows
+
+### Sample Programs
+
+#### Assembly (hello.asm)
+; Hello World program for NASM
+section .data
+    message db 'Hello, World!', 0xa
+    message_length equ $ - message
+
+section .text
+    global _start
+
+_start:
+    ; Print message
+    mov eax, 4          ; sys_write
+    mov ebx, 1          ; stdout
+    mov ecx, message    ; message
+    mov edx, message_length ; length
+    int 0x80
+
+    ; Exit
+    mov eax, 1          ; sys_exit
+    mov ebx, 0          ; exit code 0
+    int 0x80
+
+#### Pascal (hello.pas)
+program HelloWorld;
+begin
+    writeln('Hello, World!');
+    writeln('Welcome to Free Pascal!');
+end.
+
+### Docker Configuration
+
+services:
+  retro-emulator:
+    build: .
+    volumes:
+      - ./Emulation/workspace:/workspace
+    ports:
+      - "8080:8080"`,
+
+            security: `## Security Features
+
+### Input Validation
+- Hostname and domain validation
+- Command sanitization
+- Malicious character detection
+- Request size limits
+
+### Rate Limiting
+- General API rate limiting (100 requests per 15 minutes)
+- AI-specific rate limiting (10 requests per minute)
+- Configurable limits via environment variables
+
+### Command Security
+- Whitelist of allowed commands
+- Argument validation
+- Command timeout protection
+- Buffer size limits
+
+### CORS and Headers
+- Configurable CORS origins
+- Security headers (Helmet)
+- Content Security Policy
+- HSTS headers
+
+### Security Notes
+
+- The server executes system commands with the same privileges as the Node.js process
+- Only use on trusted networks
+- Commands have configurable timeout to prevent hanging
+- All inputs are validated and sanitized
+- Rate limiting prevents abuse
+- Comprehensive logging for security monitoring`,
+
+            performance: `## Performance Optimizations
+
+### Caching
+- Network command results cached for 5-60 minutes
+- AI responses cached for 10-60 minutes
+- Configurable cache TTL
+- Automatic cache cleanup
+
+### Database Optimization
+- Connection pooling
+- Prepared statements
+- Indexed queries
+- Efficient data storage
+
+### Logging
+- Structured JSON logging
+- Separate log files for different concerns
+- Log rotation and size limits
+- Performance monitoring
+
+### Monitoring
+
+#### Health Checks
+curl http://localhost:3000/api/health
+
+#### System Information
+curl http://localhost:3000/api/system
+
+#### Legal Database Statistics
+curl http://localhost:3000/api/zakon-online/stats`,
+
+            docker: `## Docker Support
+
+### Production Setup
+
+1. Set environment variables
+2. Configure SSL certificates
+3. Set up reverse proxy (nginx)
+4. Configure logging
+5. Set up monitoring
+
+### Docker Commands
+
+# Build image
+docker build -t retro-terminal .
+
+# Run container
+docker run -p 3000:3000 retro-terminal
+
+### Docker Configuration
+
+The system provides comprehensive emulation of classic development environments through Docker containers.
+
+### Available Emulators
+
+#### NASM Assembler
+- **Features**: Full x86 instruction set emulation, ELF64 output format, automatic linking
+- **Usage**: POST /api/docker/assembler
+- **Sample**: Hello World assembly program
+
+#### Free Pascal Compiler
+- **Features**: Turbo Pascal compatibility, modern capabilities, cross-platform
+- **Usage**: POST /api/docker/pascal
+- **Sample**: Hello World Pascal program
+
+#### DOSBox
+- **Features**: DOS environment emulation, old games and programs support
+- **Usage**: POST /api/docker/dos
+- **Configuration**: Custom dosbox.conf
+
+#### QEMU
+- **Features**: Full OS emulation, multiple architectures, KVM virtualization
+- **Usage**: POST /api/docker/qemu
+- **Support**: FreeDOS, Linux, Windows`,
+
+            deployment: `## Deployment
+
+### Production Setup
+
+1. Set environment variables
+2. Configure SSL certificates
+3. Set up reverse proxy (nginx)
+4. Configure logging
+5. Set up monitoring
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| PORT | 3000 | Server port |
+| NODE_ENV | development | Environment |
+| OPENAI_API_KEY | - | OpenAI API key |
+| RATE_LIMIT_MAX | 100 | Max requests per window |
+| RATE_LIMIT_WINDOW | 900000 | Rate limit window (ms) |
+| COMMAND_TIMEOUT | 10000 | Command execution timeout |
+| MAX_BUFFER_SIZE | 1048576 | Max command output size |
+| CACHE_TTL | 300 | Cache time-to-live (seconds) |
+| LOG_LEVEL | info | Logging level |
+
+### Database Configuration
+
+The application uses SQLite for data storage with the following tables:
+- motd_history - MOTD messages and prompts
+- openai_requests - AI request history
+- command_logs - Command execution logs
+- security_events - Security event tracking
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Port already in use:**
+   # Change port in .env file
+   PORT=3001
+
+2. **Network tools not found:**
+   - Windows: Install Windows Subsystem for Linux (WSL)
+   - macOS: Install via Homebrew: brew install traceroute
+   - Linux: Install via package manager
+
+3. **Permission denied:**
+   - Ensure you're logged in as admin
+   - Check file permissions
+
+4. **OpenAI API errors:**
+   - Verify API key in .env file
+   - Check API quota and billing
+   - Ensure network connectivity
+
+#### Network Tool Installation
+
+##### macOS
+brew install traceroute whois
+
+##### Ubuntu/Debian
+sudo apt-get install traceroute whois
+
+##### CentOS/RHEL
+sudo yum install traceroute whois`,
+
+            testing: `## Testing
+
+### Jest Tests
+npm test
+
+### Specific Test Files
+npm test -- autocomplete.test.js
+npm test -- commands.test.js
+npm test -- commandExecutor.test.js
+
+### HTML Tests
+Open the HTML files in tests/html/ directory in a browser to test UI functionality.
+
+### API Tests
+Use the files in tests/api/ directory to test API endpoints.
+
+### Test Coverage
+
+#### Autocomplete System
+- Command completion (TAB key)
+- Argument completion
+- Smart autocomplete with context
+- Audio feedback
+- Visual indicators
+
+#### Terminal Commands
+- Basic commands (help, ls, cd, cat, echo)
+- System commands (motd, matrix, oscilloscope)
+- Admin commands (ping, traceroute, nslookup)
+- Command history
+- Error handling
+
+#### Security
+- Input validation
+- Command sanitization
+- Permission checks
+- SQL injection prevention
+
+#### API Services
+- Network tools (ping, traceroute, nslookup)
+- Legal database integration
+- AI command processing
+- Docker emulation
+
+### Test Environment
+
+Tests use Jest as the testing framework with JSDOM for DOM simulation. The test environment includes:
+
+- Mock DOM elements
+- Simulated user interactions
+- API endpoint mocking
+- Database mocking
+- Audio API mocking
+
+### Adding New Tests
+
+1. Create test file in appropriate subdirectory
+2. Follow Jest testing patterns
+3. Include comprehensive test cases
+4. Test both success and error scenarios
+5. Mock external dependencies
+6. Add descriptive test names
+
+### Test Maintenance
+
+- Run tests before committing changes
+- Update tests when adding new features
+- Ensure all tests pass before deployment
+- Keep test files organized and documented`
+        };
+
+        // Function to show README sections
+        function showReadmeSection(section) {
+            const content = readmeSections[section];
+            if (!content) {
+                return `Error: Section '${section}' not found in documentation.
+Available sections: legal, api, emulation, security, performance, docker, deployment, testing`;
+            }
+            
+            return `=== README SECTION: ${section.toUpperCase()} ===
+
+${content}
+
+=== END OF SECTION ===
+Type 'help' for full command reference.`;
+        }
     </script>
 </body>
 </html>

@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNIX/32V Terminal ~ %</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            font-size: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Three.js Canvas for CRT effects */
+        #crt-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        /* Startup Animation */
+        .startup-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+        }
+        
+        .startup-text {
+            color: #33ff33;
+            font-size: 24px;
+            text-shadow: 
+                0 0 2px #33ff33,
+                0 0 4px #33ff33,
+                0 0 6px rgba(51, 255, 51, 0.5);
+            opacity: 0;
+            transform: translateY(20px);
+            animation: textGlow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes textGlow {
+            0% {
+                text-shadow: 
+                    0 0 2px #33ff33,
+                    0 0 4px #33ff33,
+                    0 0 6px rgba(51, 255, 51, 0.5);
+            }
+            100% {
+                text-shadow: 
+                    0 0 4px #33ff33,
+                    0 0 8px #33ff33,
+                    0 0 12px rgba(51, 255, 51, 0.8),
+                    0 0 16px rgba(51, 255, 51, 0.6);
+            }
+        }
+        
+        .startup-text.visible {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        /* Login Screen */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            z-index: 2000;
+            display: none;
+        }
+        
+        .login-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 600px;
+            color: #33ff33;
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 18px;
+            text-shadow: 0 0 5px #33ff33;
+        }
+        
+        .login-form {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #33ff33;
+            padding: 30px;
+            border-radius: 5px;
+            box-shadow: 0 0 20px rgba(51, 255, 51, 0.3);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            color: #33ff33;
+            font-size: 14px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            background: #000;
+            border: 1px solid #33ff33;
+            color: #33ff33;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .form-input:focus {
+            box-shadow: 0 0 10px rgba(51, 255, 51, 0.5);
+        }
+        
+        .form-button {
+            width: 100%;
+            padding: 12px;
+            background: #000;
+            border: 1px solid #33ff33;
+            color: #33ff33;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .form-button:hover {
+            background: #33ff33;
+            color: #000;
+            box-shadow: 0 0 15px rgba(51, 255, 51, 0.8);
+        }
+        
+        .login-message {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #ff3333;
+            min-height: 20px;
+        }
+        
+        .login-success {
+            color: #33ff33;
+        }
+        
+        /* Terminal Container */
+        .terminal-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .terminal {
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            color: #33ff33;
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            overflow-y: auto;
+        }
+        
+        .terminal-output {
+            margin-bottom: 20px;
+        }
+        
+        .output-line {
+            margin-bottom: 5px;
+            animation: fadeIn 0.1s ease-in;
+        }
+        
+        .output-line.success {
+            color: #33ff33;
+        }
+        
+        .output-line.error {
+            color: #ff3333;
+        }
+        
+        .prompt-line {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        .prompt-line.executing {
+            color: #ffaa00;
+        }
+        
+        .prompt-line.executing .prompt {
+            color: #ffaa00;
+        }
+        
+        .prompt-line.executing .command-input {
+            color: #ffaa00;
+        }
+        
+        .prompt {
+            color: #33ff33;
+            margin-right: 10px;
+        }
+        
+        .command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #33ff33;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .cursor {
+            width: 2px;
+            height: 16px;
+            background: #33ff33;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* CRT Power On/Off Effects */
+        .crt-power-on {
+            animation: crtPowerOn 2s ease-out forwards;
+        }
+        
+        .crt-power-off {
+            animation: crtPowerOff 1.5s ease-in forwards;
+        }
+        
+        @keyframes crtPowerOn {
+            0% {
+                transform: scale(0.01);
+                opacity: 0;
+                filter: brightness(0) contrast(0);
+            }
+            20% {
+                transform: scale(0.1);
+                opacity: 0.1;
+                filter: brightness(0.1) contrast(0.1);
+            }
+            50% {
+                transform: scale(0.5);
+                opacity: 0.5;
+                filter: brightness(0.5) contrast(0.5);
+            }
+            80% {
+                transform: scale(0.9);
+                opacity: 0.8;
+                filter: brightness(0.8) contrast(0.8);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+                filter: brightness(1) contrast(1);
+            }
+        }
+        
+        @keyframes crtPowerOff {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+                filter: brightness(1) contrast(1);
+            }
+            20% {
+                transform: scale(0.9);
+                opacity: 0.8;
+                filter: brightness(0.8) contrast(0.8);
+            }
+            50% {
+                transform: scale(0.5);
+                opacity: 0.5;
+                filter: brightness(0.5) contrast(0.5);
+            }
+            80% {
+                transform: scale(0.1);
+                opacity: 0.1;
+                filter: brightness(0.1) contrast(0.1);
+            }
+            100% {
+                transform: scale(0.01);
+                opacity: 0;
+                filter: brightness(0) contrast(0);
+            }
+        }
+        
+        /* Matrix Overlay */
+        .matrix-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: #000;
+            z-index: 2500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .matrix-text {
+            color: #33ff33;
+            font-size: 24px;
+            text-align: center;
+            text-shadow: 0 0 10px #33ff33;
+        }
+    </style>
+</head>
+<body>
+    <!-- Startup Animation -->
+    <div class="startup-animation" id="startupAnimation">
+        <div class="startup-text" id="startupText"></div>
+    </div>
+    
+    <!-- Matrix Overlay -->
+    <div class="matrix-overlay" id="matrixOverlay">
+        <div class="matrix-text" id="matrixText"></div>
+    </div>
+    
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-container">
+            <div class="login-header">
+                <div>UNIX/32V System</div>
+                <div>Follow the white rabbit...</div>
+            </div>
+            
+            <div class="login-form" id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Username:</label>
+                    <input type="text" class="form-input" id="usernameInput" placeholder="Enter username">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Password:</label>
+                    <input type="password" class="form-input" id="passwordInput" placeholder="Enter password">
+                </div>
+                
+                <button class="form-button" id="loginButton">Login</button>
+                <button class="form-button" id="registerButton" style="margin-top: 10px;">Register</button>
+                
+                <div class="login-message" id="loginMessage"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Terminal Container -->
+    <div class="terminal-container" id="terminalContainer">
+        <div class="terminal">
+            <div class="terminal-output" id="terminalOutput">
+                <!-- Terminal output will be added here -->
+            </div>
+            
+            <div class="prompt-line">
+                <span class="prompt" id="promptSymbol">$</span>
+                <input type="text" class="command-input" id="commandInput" placeholder="Type a command...">
+                <div class="cursor"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Canvas for CRT effects -->
+    <canvas id="crt-canvas"></canvas>
+    
+    <script>
+        // Global variables
+        let currentUser = 'user';
+        let currentHost = 'unix32v';
+        let currentDir = '~';
+        let isAuthenticated = false;
+        let isAdmin = false;
+        let currentCommand = null;
+        let commandAbortController = null;
+        
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded - Starting initialization');
+            
+            // Check authentication status first
+            checkAuthStatus();
+        });
+        
+        // Check authentication status
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/status');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    // User is already authenticated
+                    currentUser = data.user.username;
+                    isAdmin = data.user.isAdmin;
+                    isAuthenticated = true;
+                    
+                    // Show terminal directly
+                    showTerminal();
+                } else {
+                    // User needs to authenticate
+                    showLoginScreen();
+                }
+            } catch (error) {
+                console.error('Auth status check failed:', error);
+                showLoginScreen();
+            }
+        }
+        
+        // Show login screen
+        function showLoginScreen() {
+            const startupAnimation = document.getElementById('startupAnimation');
+            const loginScreen = document.getElementById('loginScreen');
+            
+            // Hide startup animation
+            startupAnimation.style.display = 'none';
+            
+            // Show login screen with CRT effect
+            loginScreen.style.display = 'block';
+            loginScreen.classList.add('crt-power-on');
+            
+            setTimeout(() => {
+                loginScreen.classList.remove('crt-power-on');
+            }, 2000);
+            
+            // Focus on username input
+            document.getElementById('usernameInput').focus();
+            
+            // Add event listeners
+            setupLoginEventListeners();
+        }
+        
+        // Setup login event listeners
+        function setupLoginEventListeners() {
+            const usernameInput = document.getElementById('usernameInput');
+            const passwordInput = document.getElementById('passwordInput');
+            const loginButton = document.getElementById('loginButton');
+            const registerButton = document.getElementById('registerButton');
+            
+            // Login button click
+            loginButton.addEventListener('click', handleLogin);
+            
+            // Register button click
+            registerButton.addEventListener('click', handleRegister);
+            
+            // Enter key handlers
+            usernameInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    passwordInput.focus();
+                }
+            });
+            
+            passwordInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleLogin();
+                }
+            });
+        }
+        
+        // Handle login
+        async function handleLogin() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const loginMessage = document.getElementById('loginMessage');
+            
+            if (!username || !password) {
+                loginMessage.textContent = 'Please enter both username and password';
+                loginMessage.className = 'login-message';
+                return;
+            }
+            
+            try {
+                loginMessage.textContent = 'Authenticating...';
+                loginMessage.className = 'login-message';
+                
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loginMessage.textContent = 'Login successful!';
+                    loginMessage.className = 'login-message login-success';
+                    
+                    // Update user info
+                    currentUser = data.user.username;
+                    isAdmin = data.user.isAdmin;
+                    isAuthenticated = true;
+                    
+                    // Show terminal after short delay
+                    setTimeout(() => {
+                        showTerminal();
+                    }, 1000);
+                } else {
+                    loginMessage.textContent = data.message || 'Login failed';
+                    loginMessage.className = 'login-message';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                loginMessage.textContent = 'Login failed. Please try again.';
+                loginMessage.className = 'login-message';
+            }
+        }
+        
+        // Handle register
+        async function handleRegister() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const loginMessage = document.getElementById('loginMessage');
+            
+            if (!username || !password) {
+                loginMessage.textContent = 'Please enter both username and password';
+                loginMessage.className = 'login-message';
+                return;
+            }
+            
+            try {
+                loginMessage.textContent = 'Registering...';
+                loginMessage.className = 'login-message';
+                
+                const response = await fetch('http://localhost:3001/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loginMessage.textContent = 'Registration successful! Please login.';
+                    loginMessage.className = 'login-message login-success';
+                    
+                    // Clear password field
+                    document.getElementById('passwordInput').value = '';
+                    document.getElementById('passwordInput').focus();
+                } else {
+                    loginMessage.textContent = data.message || 'Registration failed';
+                    loginMessage.className = 'login-message';
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                loginMessage.textContent = 'Registration failed. Please try again.';
+                loginMessage.className = 'login-message';
+            }
+        }
+        
+        // Show terminal
+        function showTerminal() {
+            const loginScreen = document.getElementById('loginScreen');
+            const terminalContainer = document.getElementById('terminalContainer');
+            
+            // Hide login screen with CRT effect
+            loginScreen.classList.add('crt-power-off');
+            
+            setTimeout(() => {
+                loginScreen.style.display = 'none';
+                
+                // Show terminal with CRT effect
+                terminalContainer.style.display = 'block';
+                terminalContainer.classList.add('crt-power-on');
+                
+                setTimeout(() => {
+                    terminalContainer.classList.remove('crt-power-on');
+                }, 2000);
+                
+                // Initialize terminal
+                initTerminal();
+            }, 1000);
+        }
+        
+        // Initialize terminal
+        function initTerminal() {
+            const terminalOutput = document.getElementById('terminalOutput');
+            const commandInput = document.getElementById('commandInput');
+            const promptSymbol = document.getElementById('promptSymbol');
+            
+            // Update prompt
+            updatePrompt();
+            
+            // Add welcome message
+            addOutputLine('UNIX/32V System Ready', 'success');
+            addOutputLine(`Welcome, ${currentUser}!`, 'success');
+            addOutputLine('Type "help" for available commands.', '');
+            addOutputLine('', '');
+            
+            // Focus on command input
+            commandInput.focus();
+            
+                    // Add command input event listener
+        commandInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const command = commandInput.value.trim();
+                if (command) {
+                    executeCommand(command);
+                    commandInput.value = '';
+                }
+            }
+        });
+        
+        // Add Ctrl+C handler for interrupting commands
+        commandInput.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'c') {
+                e.preventDefault();
+                interruptCurrentCommand();
+            }
+        });
+        }
+        
+        // Update prompt
+        function updatePrompt() {
+            const promptSymbol = document.getElementById('promptSymbol');
+            const symbol = isAdmin ? '#' : '$';
+            promptSymbol.textContent = `${currentUser}@${currentHost}:${currentDir} ${symbol}`;
+        }
+        
+        // Add output line
+        function addOutputLine(text, type = '') {
+            const terminalOutput = document.getElementById('terminalOutput');
+            const div = document.createElement('div');
+            div.className = `output-line ${type}`;
+            div.textContent = text;
+            terminalOutput.appendChild(div);
+            
+            // Auto-scroll to bottom
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+        
+        // Execute command
+        async function executeCommand(command) {
+            addOutputLine(`$ ${command}`, '');
+            
+            // Handle special commands
+            if (command === 'help') {
+                showHelp();
+            } else if (command === 'logout') {
+                await handleLogout();
+            } else if (command === 'clear') {
+                clearTerminal();
+            } else if (command === 'test') {
+                window.open('http://localhost:3001/test_interrupt.html', '_blank');
+                addOutputLine('Opening interrupt test page...', 'success');
+            } else if (command === 'db') {
+                showDatabaseInfo();
+            } else {
+                // Show executing status
+                setExecutingStatus(true);
+                
+                // Send command to server
+                await sendCommandToServer(command);
+                
+                // Clear executing status
+                setExecutingStatus(false);
+            }
+        }
+        
+        // Set executing status
+        function setExecutingStatus(executing) {
+            const promptLine = document.querySelector('.prompt-line');
+            if (executing) {
+                promptLine.classList.add('executing');
+            } else {
+                promptLine.classList.remove('executing');
+            }
+        }
+        
+        // Show database info
+        async function showDatabaseInfo() {
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/status');
+                const data = await response.json();
+                
+                addOutputLine('Database Information:', 'success');
+                addOutputLine('====================', '');
+                addOutputLine(`Current User: ${data.user ? data.user.username : 'Not authenticated'}`, '');
+                addOutputLine(`Is Admin: ${data.user ? data.user.isAdmin : 'No'}`, '');
+                addOutputLine(`Authenticated: ${data.authenticated ? 'Yes' : 'No'}`, '');
+                addOutputLine(`Message: ${data.message}`, '');
+                addOutputLine('', '');
+                addOutputLine('To view full database:', 'success');
+                addOutputLine('Run: node view_users.js', '');
+                addOutputLine('Or: node manage_users.js', '');
+                addOutputLine('', '');
+            } catch (error) {
+                addOutputLine('Failed to get database info', 'error');
+            }
+        }
+        
+        // Show help
+        function showHelp() {
+            addOutputLine('Available commands:', 'success');
+            addOutputLine('  help     - Show this help', '');
+            addOutputLine('  logout   - Logout from system', '');
+            addOutputLine('  clear    - Clear terminal', '');
+            addOutputLine('  ping     - Test network connectivity', '');
+            addOutputLine('  traceroute - Trace network path', '');
+            addOutputLine('  nslookup - DNS lookup', '');
+            addOutputLine('  netstat  - Network statistics', '');
+            addOutputLine('  whois    - Domain information', '');
+            addOutputLine('  motd     - Generate Bender-style MOTD', '');
+            addOutputLine('  test     - Open interrupt test page', '');
+            addOutputLine('  db       - Show database info', '');
+            addOutputLine('', '');
+            addOutputLine('Keyboard shortcuts:', 'success');
+            addOutputLine('  Ctrl+C   - Interrupt current command', '');
+            addOutputLine('', '');
+        }
+        
+        // Handle logout
+        async function handleLogout() {
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/logout', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    addOutputLine('Logout successful. Redirecting to login...', 'success');
+                    
+                    // CRT Power Off Effect
+                    const terminalContainer = document.getElementById('terminalContainer');
+                    terminalContainer.classList.add('crt-power-off');
+                    
+                    setTimeout(() => {
+                        // Reset state
+                        isAuthenticated = false;
+                        isAdmin = false;
+                        currentUser = 'user';
+                        
+                        // Show login screen
+                        showLoginScreen();
+                    }, 1500);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                addOutputLine('Logout failed', 'error');
+            }
+        }
+        
+        // Clear terminal
+        function clearTerminal() {
+            const terminalOutput = document.getElementById('terminalOutput');
+            terminalOutput.innerHTML = '';
+        }
+        
+        // Interrupt current command
+        function interruptCurrentCommand() {
+            if (currentCommand && commandAbortController) {
+                commandAbortController.abort();
+                addOutputLine('^C', 'error');
+                addOutputLine('', '');
+                currentCommand = null;
+                commandAbortController = null;
+                
+                // Clear executing status
+                setExecutingStatus(false);
+            }
+        }
+        
+        // Send command to server
+        async function sendCommandToServer(command) {
+            try {
+                // Create abort controller for this command
+                commandAbortController = new AbortController();
+                currentCommand = command;
+                
+                const response = await fetch('http://localhost:3001/api/process-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ command }),
+                    signal: commandAbortController.signal
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    addOutputLine(data.result, 'success');
+                } else {
+                    addOutputLine(data.error || 'Command failed', 'error');
+                }
+                
+                // Clear command tracking
+                currentCommand = null;
+                commandAbortController = null;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addOutputLine('Command interrupted by user', 'error');
+                } else {
+                    console.error('Command execution error:', error);
+                    addOutputLine('Command execution failed', 'error');
+                }
+                
+                // Clear command tracking
+                currentCommand = null;
+                commandAbortController = null;
+            }
+        }
+        
+        // Matrix effect for "Follow the white rabbit"
+        function showMatrixEffect() {
+            const matrixOverlay = document.getElementById('matrixOverlay');
+            const matrixText = document.getElementById('matrixText');
+            
+            matrixOverlay.style.display = 'flex';
+            matrixText.textContent = '';
+            
+            const text = "Follow the white rabbit...";
+            let index = 0;
+            
+            function typeMatrixText() {
+                if (index < text.length) {
+                    matrixText.textContent += text[index];
+                    index++;
+                    setTimeout(typeMatrixText, 100);
+                } else {
+                    setTimeout(() => {
+                        matrixOverlay.style.display = 'none';
+                    }, 2000);
+                }
+            }
+            
+            typeMatrixText();
+        }
+        
+        // Three.js CRT Effects Setup
+        let scene, camera, renderer;
+        let scanlineGeometry, scanlineMaterial, scanlineMesh;
+        let interferenceGeometry, interferenceMaterial, interferenceMesh;
+        let time = 0;
+        
+        // Initialize CRT effects
+        function initCRTEffects() {
+            const canvas = document.getElementById('crt-canvas');
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: canvas, 
+                alpha: true,
+                antialias: false 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0);
+            
+            // Scanline effect
+            const scanlineVertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            
+            const scanlineFragmentShader = `
+                uniform float time;
+                uniform vec2 resolution;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec2 uv = vUv;
+                    
+                    // Moving scanlines - thinner and less frequent
+                    float scanline1 = sin((uv.y + time * 0.2) * 800.0) * 0.03;
+                    float scanline2 = sin((uv.y - time * 0.15) * 600.0) * 0.02;
+                    
+                    // Horizontal sweep line - subtler
+                    float sweepPos = mod(time * 0.1, 1.0);
+                    float sweep = smoothstep(0.01, 0.0, abs(uv.y - sweepPos)) * 0.2;
+                    sweep *= sin(time * 30.0) * 0.5 + 0.5; // Flickering
+                    
+                    // Secondary sweep - less frequent
+                    float sweepPos2 = mod(time * 0.05 + 0.5, 1.0);
+                    float sweep2 = smoothstep(0.005, 0.0, abs(uv.y - sweepPos2)) * 0.1;
+                    sweep2 *= sin(time * 20.0 + 3.14) * 0.5 + 0.5;
+                    
+                    // Interference bars - less frequent and thinner
+                    float interference = 0.0;
+                    if (mod(time * 1.5, 10.0) < 0.5) {
+                        float barPos = mod(time * 4.0, 1.0);
+                        interference = smoothstep(0.01, 0.0, abs(uv.y - barPos)) * 0.2;
+                        interference *= sin(time * 80.0) * 0.5 + 0.5;
+                    }
+                    
+                    // Vertical sync issues - less frequent
+                    float verticalGlitch = 0.0;
+                    if (mod(time * 0.2, 15.0) < 0.2) {
+                        verticalGlitch = step(0.01, sin(uv.x * 300.0 + time * 8.0)) * 0.05;
+                    }
+                    
+                    // Phosphor decay simulation - subtler
+                    float phosphor = sin(uv.y * 400.0) * 0.01;
+                    
+                    // Random noise - very subtle
+                    float noise = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453) * 0.01;
+                    
+                    float intensity = scanline1 + scanline2 + sweep + sweep2 + interference + verticalGlitch + phosphor + noise;
+                    
+                    gl_FragColor = vec4(0.2, 1.0, 0.2, intensity);
+                }
+            `;
+            
+            scanlineGeometry = new THREE.PlaneGeometry(2, 2);
+            scanlineMaterial = new THREE.ShaderMaterial({
+                vertexShader: scanlineVertexShader,
+                fragmentShader: scanlineFragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            scanlineMesh = new THREE.Mesh(scanlineGeometry, scanlineMaterial);
+            scene.add(scanlineMesh);
+            
+            camera.position.z = 1;
+        }
+        
+        function animateCRT() {
+            requestAnimationFrame(animateCRT);
+            
+            time += 0.016; // ~60fps
+            scanlineMaterial.uniforms.time.value = time;
+            
+            // Random screen flicker - less frequent and subtler
+            if (Math.random() < 0.02) {
+                scanlineMaterial.uniforms.time.value += Math.random() * 0.1;
+            }
+            
+            // Additional random interference - less frequent
+            if (Math.random() < 0.01) {
+                scanlineMaterial.uniforms.time.value += Math.random() * 0.08;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            renderer.setSize(width, height);
+            scanlineMaterial.uniforms.resolution.value.set(width, height);
+        });
+        
+        // Initialize CRT effects when page loads
+        initCRTEffects();
+        animateCRT();
+    </script>
+</body>
+</html> 

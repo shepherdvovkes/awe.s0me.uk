@@ -1,9 +1,9 @@
 const express = require('express');
 const Joi = require('joi');
-const AIService = require('../services/aiService');
 const Validators = require('../utils/validators');
 const { logError } = require('../utils/logger');
 const SecurityMiddleware = require('../middleware/security');
+const container = require('../container/DIContainer');
 
 const router = express.Router();
 
@@ -44,7 +44,8 @@ router.post('/motd',
     Validators.createValidationMiddleware(motdSchema),
     async(req, res) => {
         try {
-            const result = await AIService.generateMOTD();
+            const aiService = container.get('aiService');
+            const result = await aiService.generateMOTD();
             res.json(result);
         } catch (error) {
             logError('MOTD generation failed', {
@@ -68,23 +69,53 @@ router.post('/process-command',
     SecurityMiddleware.aiRateLimiter,
     Validators.createValidationMiddleware(commandSchema),
     async(req, res) => {
-        try {
-            const { command, isAdmin = false } = req.validatedBody;
-            const result = await AIService.processUnknownCommand(command, isAdmin);
-            res.json(result);
-        } catch (error) {
-            logError('Command processing failed', {
+        // Handle request abortion
+        req.on('aborted', () => {
+            logInfo('Command request aborted by client', {
                 command: req.validatedBody?.command,
-                isAdmin: req.validatedBody?.isAdmin,
-                error: error.message,
                 ip: req.ip
             });
+        });
+        
+        try {
+            const { command, isAdmin = false } = req.validatedBody;
             
-            res.status(500).json({ 
-                error: 'Command processing failed',
-                details: error.message,
-                timestamp: new Date().toISOString()
-            });
+            // Check if request was aborted
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            const aiService = container.get('aiService');
+            const result = await aiService.processUnknownCommand(command, isAdmin);
+            
+            // Check again before sending response
+            if (req.aborted) {
+                return res.status(499).json({
+                    success: false,
+                    error: 'Request aborted by client'
+                });
+            }
+            
+            res.json(result);
+        } catch (error) {
+            // Don't log if request was aborted
+            if (!req.aborted) {
+                logError('Command processing failed', {
+                    command: req.validatedBody?.command,
+                    isAdmin: req.validatedBody?.isAdmin,
+                    error: error.message,
+                    ip: req.ip
+                });
+                
+                res.status(500).json({ 
+                    error: 'Command processing failed',
+                    details: error.message,
+                    timestamp: new Date().toISOString()
+                });
+            }
         }
     }
 );
@@ -98,7 +129,8 @@ router.post('/detect-legal',
     async(req, res) => {
         try {
             const { query } = req.validatedBody;
-            const result = await AIService.detectLegalRequest(query);
+            const aiService = container.get('aiService');
+            const result = await aiService.detectLegalRequest(query);
             res.json(result);
         } catch (error) {
             logError('Legal detection failed', {
@@ -125,7 +157,8 @@ router.post('/legal-search',
     async(req, res) => {
         try {
             const { query, language = 'ru' } = req.validatedBody;
-            const result = await AIService.searchLegalDatabase(query, language);
+            const aiService = container.get('aiService');
+            const result = await aiService.searchLegalDatabase(query, language);
             res.json(result);
         } catch (error) {
             logError('Legal search failed', {
@@ -153,7 +186,8 @@ router.post('/court-cases',
     async(req, res) => {
         try {
             const { query } = req.validatedBody;
-            const result = await AIService.processCourtCaseRequest(query);
+            const aiService = container.get('aiService');
+            const result = await aiService.processCourtCaseRequest(query);
             res.json(result);
         } catch (error) {
             logError('Court case processing failed', {
@@ -180,7 +214,8 @@ router.post('/tcc',
     async(req, res) => {
         try {
             const { command } = req.validatedBody;
-            const result = await AIService.processTCCRequest(command);
+            const aiService = container.get('aiService');
+            const result = await aiService.processTCCRequest(command);
             res.json(result);
         } catch (error) {
             logError('TCC request processing failed', {
@@ -206,7 +241,8 @@ router.get('/motd/history',
     async(req, res) => {
         try {
             const { limit = 20 } = req.validatedQuery;
-            const result = await AIService.getMOTDHistory(parseInt(limit));
+            const aiService = container.get('aiService');
+            const result = await aiService.getMOTDHistory(parseInt(limit));
             res.json(result);
         } catch (error) {
             logError('MOTD history failed', {
@@ -232,7 +268,8 @@ router.get('/openai/history',
     async(req, res) => {
         try {
             const { limit = 20 } = req.validatedQuery;
-            const result = await AIService.getOpenAIHistory(parseInt(limit));
+            const aiService = container.get('aiService');
+            const result = await aiService.getOpenAIHistory(parseInt(limit));
             res.json(result);
         } catch (error) {
             logError('OpenAI history failed', {
@@ -255,7 +292,8 @@ router.get('/openai/history',
  */
 router.get('/status', async(req, res) => {
     try {
-        const result = await AIService.getServiceStatus();
+        const aiService = container.get('aiService');
+        const result = await aiService.getServiceStatus();
         res.json(result);
     } catch (error) {
         logError('AI status check failed', {
@@ -276,7 +314,8 @@ router.get('/status', async(req, res) => {
  */
 router.get('/stats', async(req, res) => {
     try {
-        const result = await AIService.getServiceStats();
+        const aiService = container.get('aiService');
+        const result = await aiService.getServiceStats();
         res.json(result);
     } catch (error) {
         logError('AI stats failed', {
@@ -286,6 +325,28 @@ router.get('/stats', async(req, res) => {
         
         res.status(500).json({ 
             error: 'AI stats failed',
+            details: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+/**
+ * Available AI strategies endpoint
+ */
+router.get('/strategies', async(req, res) => {
+    try {
+        const aiService = container.get('aiService');
+        const result = await aiService.getAvailableStrategies();
+        res.json(result);
+    } catch (error) {
+        logError('AI strategies failed', {
+            error: error.message,
+            ip: req.ip
+        });
+        
+        res.status(500).json({ 
+            error: 'AI strategies failed',
             details: error.message,
             timestamp: new Date().toISOString()
         });

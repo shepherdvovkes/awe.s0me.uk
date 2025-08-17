@@ -1,3 +1,4 @@
+require('openai/shims/node');
 const OpenAI = require('openai');
 const { logError, logInfo } = require('../utils/logger');
 const config = require('../config/app');

@@ -15,7 +15,19 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
+    openssh-server \
+    openssh-client \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
+
+# Настройка SSH
+RUN mkdir /var/run/sshd
+RUN echo 'root:retro123' | chpasswd
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 
 # Создание рабочей директории
 WORKDIR /workspace
@@ -51,8 +63,12 @@ ENV PATH="/usr/local/bin:${PATH}"
 ENV FPC_DIR="/usr/local/lib/fpc/3.2.2"
 ENV DOSBOX_CONF="/root/.dosbox/dosbox-0.74-3.conf"
 
-# Открытие порта для веб-интерфейса (если понадобится)
-EXPOSE 8080
+# Открытие портов для SSH и веб-интерфейса
+EXPOSE 22 8080
+
+# Скрипт запуска SSH и других сервисов
+COPY docker/start-services.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start-services.sh
 
 # Команда по умолчанию
-CMD ["/bin/bash"] 
+CMD ["/usr/local/bin/start-services.sh"] 

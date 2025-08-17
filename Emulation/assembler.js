@@ -63,6 +63,9 @@ class AssemblerEmulator {
         if (trimmed === 'end start') {
             return { type: 'directive', name: 'end', value: 'start' };
         }
+        if (trimmed === 'end') {
+            return { type: 'directive', name: 'end', value: '' };
+        }
         
         return null;
     }
@@ -115,6 +118,24 @@ class AssemblerEmulator {
                 operands: operands,
                 opcode: 0xBA,
                 size: 3
+            };
+        }
+        if (instruction === 'mov' && operands.includes('ax') && operands.includes('@data')) {
+            return {
+                type: 'instruction',
+                name: 'mov',
+                operands: operands,
+                opcode: 0xB8,
+                size: 3
+            };
+        }
+        if (instruction === 'mov' && operands.includes('ds') && operands.includes('ax')) {
+            return {
+                type: 'instruction',
+                name: 'mov',
+                operands: operands,
+                opcode: 0x8E,
+                size: 2
             };
         }
         if (instruction === 'int' && operands.includes('21h')) {

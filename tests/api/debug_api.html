@@ -17,10 +17,15 @@
 <body>
     <h1>🔍 API Debug Test</h1>
     
-    <button onclick="testSimple()">Test 1: Simple Request</button>
+    <button onclick="testSimple()">Test 1: help</button>
     <button onclick="testRunHelp()">Test 2: run help</button>
     <button onclick="testRunAsm()">Test 3: run asm</button>
-    <button onclick="testRunList()">Test 4: run list</button>
+    <button onclick="testRunPascal()">Test 4: run pascal</button>
+    <button onclick="testRunAsmSample()">Test 5: run asm sample hello</button>
+    <button onclick="testRunPascalSample()">Test 6: run pascal sample hello</button>
+    <button onclick="testRunAsmHelp()">Test 7: run asm help</button>
+    <button onclick="testRunPascalHelp()">Test 8: run pascal help</button>
+    <button onclick="testRunList()">Test 9: run list</button>
     <button onclick="clearLog()">Clear Log</button>
     
     <div id="result" class="output">Click a button to start debugging...</div>
@@ -104,6 +109,26 @@
         
         function testRunAsm() {
             testAPI('run asm', 'Run Assembler Command');
+        }
+        
+        function testRunPascal() {
+            testAPI('run pascal', 'Run Pascal Command');
+        }
+        
+        function testRunAsmSample() {
+            testAPI('run asm sample hello', 'Run Assembler Sample Command');
+        }
+        
+        function testRunPascalSample() {
+            testAPI('run pascal sample hello', 'Run Pascal Sample Command');
+        }
+        
+        function testRunAsmHelp() {
+            testAPI('run asm help', 'Run Assembler Help Command');
+        }
+        
+        function testRunPascalHelp() {
+            testAPI('run pascal help', 'Run Pascal Help Command');
         }
         
         function testRunList() {
