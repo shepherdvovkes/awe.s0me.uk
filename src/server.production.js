@@ -26,7 +26,7 @@ app.use(helmet({
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", "https://awe.s0me.uk", "https://www.awe.s0me.uk"],
+            connectSrc: ["'self'", "https://awe.s0me.uk", "https://www.awe.s0me.uk", "wss://awe.s0me.uk", "wss://www.awe.s0me.uk"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"]
         }
@@ -95,7 +95,7 @@ app.use(express.static(path.join(__dirname, '../'), {
 }));
 
 // API Routes
-app.use('/api/ai', aiRoutes);
+app.use('/api', aiRoutes);
 app.use('/api/docker', dockerRoutes);
 app.use('/api/network', networkRoutes);
 app.use('/api/zakon-online', zakonRoutes);

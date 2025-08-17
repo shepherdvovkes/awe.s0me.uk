@@ -12,6 +12,7 @@
     "dev:https": "nodemon server_https.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:production": "node test-production-endpoints.js",
     "test-motd": "node test_motd.js",
     "test-ai": "node test_ai_commands.js",
     "test-zakon": "node test_zakon_api.js",
