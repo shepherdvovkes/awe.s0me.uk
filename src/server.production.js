@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const config = require('./config/app');
+const databaseManager = require('./modules/database');
 const { logger } = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const security = require('./middleware/security');
@@ -175,11 +176,25 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`🚀 Production Retro Terminal Server running on http://0.0.0.0:${PORT}`);
-    logger.info(`📡 Server will be accessible via nginx at https://awe.s0me.uk`);
-    logger.info(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Initialize database and start server
+async function startServer() {
+    try {
+        // Initialize database
+        await databaseManager.initialize();
+        logger.info('Database initialized successfully');
+
+        // Start server
+        app.listen(PORT, '0.0.0.0', () => {
+            logger.info(`🚀 Production Retro Terminal Server running on http://0.0.0.0:${PORT}`);
+            logger.info(`📡 Server will be accessible via nginx at https://awe.s0me.uk`);
+            logger.info(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
+        });
+    } catch (error) {
+        logger.error('Failed to start server', error);
+        process.exit(1);
+    }
+}
+
+startServer();
 
 module.exports = app;

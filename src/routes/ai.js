@@ -62,7 +62,7 @@ router.post('/motd',
 );
 
 /**
- * Process unknown command endpoint
+ * Intelligently process any command or request endpoint
  */
 router.post('/process-command',
     SecurityMiddleware.aiRateLimiter,
@@ -70,10 +70,10 @@ router.post('/process-command',
     async(req, res) => {
         try {
             const { command, isAdmin = false } = req.validatedBody;
-            const result = await AIService.processUnknownCommand(command, isAdmin);
+            const result = await AIService.intelligentlyProcessCommand(command, isAdmin);
             res.json(result);
         } catch (error) {
-            logError('Command processing failed', {
+            logError('Intelligent command processing failed', {
                 command: req.validatedBody?.command,
                 isAdmin: req.validatedBody?.isAdmin,
                 error: error.message,
@@ -81,7 +81,7 @@ router.post('/process-command',
             });
             
             res.status(500).json({ 
-                error: 'Command processing failed',
+                error: 'Intelligent command processing failed',
                 details: error.message,
                 timestamp: new Date().toISOString()
             });

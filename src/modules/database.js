@@ -244,6 +244,27 @@ class DatabaseManager {
     }
 
     /**
+     * Ищет существующий ответ на запрос
+     * @param {string} prompt - Промпт для поиска
+     * @param {string} requestType - Тип запроса (опционально)
+     * @returns {Promise<Object|null>} - Найденный ответ или null
+     */
+    async findExistingResponse(prompt, requestType = null) {
+        let sql, params;
+        
+        if (requestType) {
+            sql = 'SELECT request_type, prompt, response, created_at FROM openai_requests WHERE prompt = ? AND request_type = ? ORDER BY created_at DESC LIMIT 1';
+            params = [prompt, requestType];
+        } else {
+            sql = 'SELECT request_type, prompt, response, created_at FROM openai_requests WHERE prompt = ? ORDER BY created_at DESC LIMIT 1';
+            params = [prompt];
+        }
+        
+        const result = await this.get(sql, params);
+        return result;
+    }
+
+    /**
      * Сохраняет лог команды
      * @param {string} command - Команда
      * @param {Array} args - Аргументы

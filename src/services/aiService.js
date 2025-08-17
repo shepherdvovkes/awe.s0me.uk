@@ -45,7 +45,42 @@ class AIService {
     }
 
     /**
-     * Processes unknown command
+     * Intelligently processes any command or request
+     * @param {string} command - Command or request to process
+     * @param {boolean} isAdmin - Whether user is admin
+     * @returns {Promise<Object>} - Processing result with type information
+     */
+    static async intelligentlyProcessCommand(command, isAdmin = false) {
+        try {
+            const aiProcessor = new AIProcessor();
+
+            // Check OpenAI availability
+            if (!await aiProcessor.isOpenAIAvailable()) {
+                throw new Error('AI service is currently unavailable');
+            }
+
+            const result = await aiProcessor.intelligentlyProcessCommand(command, isAdmin);
+
+            return {
+                success: true,
+                type: result.type,
+                output: result.response,
+                cached: result.cached,
+                source: result.source,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            logError('Intelligent command processing service failed', { 
+                command, 
+                isAdmin, 
+                error: error.message 
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Processes unknown command (legacy method)
      * @param {string} command - Command to process
      * @param {boolean} isAdmin - Whether user is admin
      * @returns {Promise<Object>} - Processing result
